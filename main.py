@@ -254,6 +254,47 @@ async def profil(ctx, member: discord.Member = None):
     embed.add_field(name="🔴 Balls", value=f"🔴 x{u_data['pokeball']} | 🔵 x{u_data['superball']} | 🟣 x{u_data['hyperball']} | 🟡 x{u_data['masterball']}", inline=False)
     await ctx.send(embed=embed)
 
+# --- INTERACTIVITÉ INVENTAIRE & DÉTAILS ---
+class PokedexSelect(discord.ui.Select):
+    def __init__(self, pokemons):
+        options = []
+        for name, shiny in pokemons[:25]:
+            label = f"{name} (Shiny)" if shiny else name
+            emoji = "✨" if shiny else "🌸"
+            options.append(discord.SelectOption(label=label, emoji=emoji, value=f"{name}_{shiny}"))
+        
+        super().__init__(placeholder="Choisis un esprit pour voir ses détails...", min_values=1, max_values=1, options=options)
+
+    async def callback(self, interaction: discord.Interaction):
+        val_parts = self.values[0].split("_")
+        name = val_parts[0]
+        is_shiny = int(val_parts[1])
+
+        response = requests.get(f"https://pokeapi.co/api/v2/pokemon/{name.lower()}")
+        if response.status_code == 200:
+            data = response.json()
+            height = data['height'] / 10.0
+            weight = data['weight'] / 10.0
+            types = " / ".join([t['type']['name'].capitalize() for t in data['types']])
+            image_url = data['sprites']['other']['official-artwork']['front_shiny' if is_shiny else 'front_default'] or data['sprites']['front_default']
+
+            embed = discord.Embed(
+                title=f"⛩️ Fiche de l'Esprit : {name}{' ✨' if is_shiny else ''}",
+                description=f"📏 **Taille :** {height}m\n⚖️ **Poids :** {weight}kg\n🔮 **Type(s) :** {types}",
+                color=0xFFB7C5 if is_shiny else 0xFFC0CB
+            )
+            embed.set_image(url=image_url)
+            embed.set_footer(text=f"Demandé par {interaction.user.display_name}")
+            
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+        else:
+            await interaction.response.send_message("Erreur lors de la récupération des détails de l'esprit.", ephemeral=True)
+
+class PokedexView(discord.ui.View):
+    def __init__(self, pokemons):
+        super().__init__()
+        self.add_item(PokedexSelect(pokemons))
+
 @discord_bot.command()
 async def inv(ctx, member: discord.Member = None):
     target = member or ctx.author
@@ -264,28 +305,14 @@ async def inv(ctx, member: discord.Member = None):
         await ctx.send(f"🌸 {target.mention} n'a aucun esprit dans son clan !")
         return
 
-    liste_pokes = []
-    nb_shinies = 0
-    for p in pokemons:
-        nom = p[0]
-        is_shiny = p[1]
-        if is_shiny == 1:
-            liste_pokes.append(f"{nom} ✨")
-            nb_shinies += 1
-        else:
-            liste_pokes.append(nom)
-
-    description = ", ".join(liste_pokes)
-    
     embed = discord.Embed(
-        title=f"🌸 Pokédex de {target.display_name} ({len(pokemons)} esprits)",
-        description=description,
+        title=f"🌸 Clan de {target.display_name} ({len(pokemons)} esprits)",
+        description="Utilise le menu déroulant ci-dessous pour inspecter un esprit en détail !",
         color=0xFFC0CB
     )
-    if nb_shinies > 0:
-        embed.set_footer(text=f"✨ Esprits divins (Shiny) possédés : {nb_shinies}")
-        
-    await ctx.send(embed=embed)
+    
+    view = PokedexView(pokemons)
+    await ctx.send(embed=embed, view=view)
 
 @discord_bot.command()
 async def shop(ctx):
@@ -435,6 +462,39 @@ def current_pokemon():
         return jsonify({**pokemon_sauvage, "anim_capture": anim_active})
     return jsonify({"name": None, "anim_capture": anim_active})
 
+@app.route('/pokedex')
+def pokedex_html():
+    cursor.execute("SELECT pokemon_name, is_shiny FROM pokedex")
+    all_pokes = cursor.fetchall()
+    
+    cards = ""
+    for name, shiny in all_pokes:
+        shiny_badge = " ✨" if shiny else ""
+        border_color = "#ffd700" if shiny else "#ffb7c5"
+        cards += f"""
+        <div style="background: rgba(0,0,0,0.8); border: 2px solid {border_color}; border-radius: 12px; padding: 15px; text-align: center; width: 140px; color: white; box-shadow: 0 4px 8px rgba(0,0,0,0.3);">
+            <h3 style="margin: 5px 0; font-size: 16px; color: #ffeb3b;">{name}{shiny_badge}</h3>
+        </div>
+        """
+        
+    return f"""
+    <html>
+        <head>
+            <title>Galerie des Esprits - Yōkai Bot</title>
+            <style>
+                body {{ background: #1a1a1a; font-family: Arial, sans-serif; color: white; padding: 20px; }}
+                h1 {{ text-align: center; color: #ffb7c5; text-shadow: 2px 2px 4px #000; }}
+                .grid {{ display: flex; flex-wrap: wrap; gap: 15px; justify-content: center; margin-top: 20px; }}
+            </style>
+        </head>
+        <body>
+            <h1>⛩️ Galerie des Esprits Capturés ⛩️</h1>
+            <div class="grid">
+                {cards or "<p style='text-align:center;'>Aucun esprit capturé pour le moment...</p>"}
+            </div>
+        </body>
+    </html>
+    """
 
 def run_flask():
     port = int(os.getenv("PORT", 5000))
