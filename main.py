@@ -465,8 +465,6 @@ def run_flask():
     app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
 
 def run_twitch():
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
     twitch_bot = TwitchBot()
     twitch_bot.run()
 
