@@ -5,10 +5,8 @@ import random
 import sqlite3
 import os
 import threading
-import asyncio
 from flask import Flask, jsonify, request
 from flask_cors import CORS
-from twitchio.ext import commands as twitch_commands
 from datetime import datetime, timedelta
 
 # --- BASE DE DONNÉES ---
@@ -372,46 +370,6 @@ async def capture(ctx, ball_type: str = "pokeball"):
         await ctx.send("L'esprit s'est enfui...")
 
 
-# --- BOT TWITCH ---
-class TwitchBot(twitch_commands.Bot):
-    def __init__(self):
-        super().__init__(
-            token=os.getenv('TWITCH_TOKEN'),
-            client_id=os.getenv('TWITCH_CLIENT_ID'),
-            client_secret=os.getenv('TWITCH_CLIENT_SECRET'),
-            prefix='!',
-            initial_channels=['yokaiiifox']
-        )
-
-    async def event_ready(self):
-        print(f"Twitch connecté : {self.connected_channels[0]} 🌸")
-
-    @twitch_commands.command(name='capture')
-    async def twitch_capture(self, ctx: twitch_commands.Context):
-        global pokemon_sauvage, derniere_capture_anim
-        if pokemon_sauvage is None:
-            return
-
-        user_id = f"twitch_{ctx.author.id}"
-        user_data = get_or_create_user(user_id)
-        if user_data["pokeball"] <= 0:
-            return
-
-        derniere_capture_anim = "pokeball"
-        cursor.execute("UPDATE users SET pokeball = pokeball - 1 WHERE user_id = ?", (user_id,))
-        
-        if random.randint(1, 100) <= 70:
-            poke, shiny = pokemon_sauvage["name"], pokemon_sauvage["is_shiny"]
-            pokemon_sauvage = None
-            cursor.execute("INSERT INTO pokedex (user_id, pokemon_name, is_shiny) VALUES (?, ?, ?)", (user_id, poke, 1 if shiny else 0))
-            cursor.execute("UPDATE users SET money = money + ? WHERE user_id = ?", (200 if shiny else 50, user_id))
-            conn.commit()
-            await ctx.send(f"@{ctx.author.name} a capturé {poke} !")
-        else:
-            pokemon_sauvage = None
-            conn.commit()
-
-
 # --- SERVEUR WEB (FLASK) ---
 app = Flask(__name__)
 CORS(app)
@@ -464,16 +422,9 @@ def run_flask():
     port = int(os.getenv("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
 
-def run_twitch():
-    twitch_bot = TwitchBot()
-    twitch_bot.run()
-
 
 if __name__ == '__main__':
     t_flask = threading.Thread(target=run_flask)
     t_flask.start()
-
-    t_twitch = threading.Thread(target=run_twitch)
-    t_twitch.start()
 
     discord_bot.run(os.getenv('DISCORD_TOKEN'))
