@@ -9,6 +9,14 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 from datetime import datetime, timedelta
 
+# --- SERVEUR WEB (FLASK) POUR MAINTENIR RENDER ACTIF ---
+app = Flask(__name__)
+CORS(app)
+
+@app.route('/')
+def keep_alive():
+    return "Mon bot Pokémon est bien en ligne !"
+
 # --- DICTIONNAIRE DE TRADUCTION FRANÇAIS -> ANGLAIS ---
 # Permet de lier les noms français des Pokémon vers l'API officielle
 TRADUCTION_POKEMON = {
@@ -295,7 +303,6 @@ class PokedexSelect(discord.ui.Select):
         name = val_parts[0]
         is_shiny = int(val_parts[1])
 
-        # Utilisation de la table de conversion pour l'API
         api_name = get_api_name(name)
 
         response = requests.get(f"https://pokeapi.co/api/v2/pokemon/{api_name}")
@@ -442,45 +449,7 @@ async def capture(ctx, ball_type: str = "pokeball"):
         conn.commit()
         await ctx.send("L'esprit s'est enfui...")
 
-
-# --- SERVEUR WEB (FLASK) ---
-app = Flask(__name__)
-CORS(app)
-
-@app.route('/')
-def overlay_html():
-    return """
-    <html>
-        <head>
-            <style>
-                body { background-color: rgba(0,0,0,0); margin: 0; font-family: Arial, sans-serif; overflow: hidden; }
-                #container { text-align: center; color: white; text-shadow: 2px 2px 4px #000; position: absolute; top: 20px; left: 20px; background: rgba(0, 0, 0, 0.75); padding: 20px; border-radius: 15px; border: 3px solid #ffb7c5; width: 250px; }
-                .poke-img { width: 140px; height: 140px; image-rendering: pixelated; }
-                h2 { margin: 8px 0; font-size: 20px; color: #ffeb3b; }
-                p { margin: 5px 0; font-size: 15px; color: #ffffff; font-weight: bold; }
-            </style>
-        </head>
-        <body>
-            <div id="container"><div id="content"></div></div>
-            <script>
-                async function updateOverlay() {
-                    try {
-                        let response = await fetch('/current-pokemon');
-                        let data = await response.json();
-                        let container = document.getElementById('content');
-                        if (data.name) {
-                            container.innerHTML = `<img class="poke-img" src="${data.image_url}" /><h2>${data.name}</h2><p>${data.types}</p>`;
-                        } else {
-                            container.innerHTML = "";
-                        }
-                    } catch (e) {}
-                }
-                setInterval(updateOverlay, 1000);
-            </script>
-        </body>
-    </html>
-    """
-
+# Routes Flask additionnelles pour l'overlay/pokedex existantes
 @app.route('/current-pokemon')
 def current_pokemon():
     global pokemon_sauvage, derniere_capture_anim
@@ -512,7 +481,7 @@ def pokedex_html():
             <style>
                 body {{ background: #1a1a1a; font-family: Arial, sans-serif; color: white; padding: 20px; }}
                 h1 {{ text-align: center; color: #ffb7c5; text-shadow: 2px 2px 4px #000; }}
-                .grid {{ display: flex; flex-wrap: gap: 15px; justify-content: center; margin-top: 20px; }}
+                .grid {{ display: flex; flex-wrap: wrap; gap: 15px; justify-content: center; margin-top: 20px; }}
             </style>
         </head>
         <body>
