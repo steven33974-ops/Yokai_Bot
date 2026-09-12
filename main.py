@@ -9,6 +9,31 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 from datetime import datetime, timedelta
 
+# --- DICTIONNAIRE DE TRADUCTION FRANÇAIS -> ANGLAIS ---
+# Permet de lier les noms français des Pokémon vers l'API officielle
+TRADUCTION_POKEMON = {
+    "dracaufeu": "charizard",
+    "reptincel": "charmeleon",
+    "salameche": "charmander",
+    "florizarre": "venusaur",
+    "herbizarre": "ivysaur",
+    "bulbizarre": "bulbasaur",
+    "tortank": "blastoise",
+    "carabaffe": "wartortle",
+    "carapuce": "squirtle",
+    "pikachu": "pikachu",
+    "dracolosse": "dragonite",
+    "dracaucor": "dragonair",
+    "minidraco": "dratini",
+    "mewtwo": "mewtwo",
+    "mew": "mew",
+    # Ajoutez d'autres traductions si besoin au format "francais": "english"
+}
+
+def get_api_name(nom_francais):
+    nom_clean = nom_francais.lower().strip()
+    return TRADUCTION_POKEMON.get(nom_clean, nom_clean)
+
 # --- BASE DE DONNÉES ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 db_path = os.path.join(BASE_DIR, 'pokemon_bot.db')
@@ -254,7 +279,7 @@ async def profil(ctx, member: discord.Member = None):
     embed.add_field(name="🔴 Balls", value=f"🔴 x{u_data['pokeball']} | 🔵 x{u_data['superball']} | 🟣 x{u_data['hyperball']} | 🟡 x{u_data['masterball']}", inline=False)
     await ctx.send(embed=embed)
 
-# --- INTERACTIVITÉ INVENTAIRE & DÉTAILS ---
+# --- INTERACTIVITÉ INVENTAIRE & DÉTAILS AVEC TRADUCTION ---
 class PokedexSelect(discord.ui.Select):
     def __init__(self, pokemons):
         options = []
@@ -270,7 +295,10 @@ class PokedexSelect(discord.ui.Select):
         name = val_parts[0]
         is_shiny = int(val_parts[1])
 
-        response = requests.get(f"https://pokeapi.co/api/v2/pokemon/{name.lower()}")
+        # Utilisation de la table de conversion pour l'API
+        api_name = get_api_name(name)
+
+        response = requests.get(f"https://pokeapi.co/api/v2/pokemon/{api_name}")
         if response.status_code == 200:
             data = response.json()
             height = data['height'] / 10.0
@@ -288,7 +316,7 @@ class PokedexSelect(discord.ui.Select):
             
             await interaction.response.send_message(embed=embed, ephemeral=True)
         else:
-            await interaction.response.send_message("Erreur lors de la récupération des détails de l'esprit.", ephemeral=True)
+            await interaction.response.send_message(f"Erreur : Impossible de récupérer les données pour {name} (API ID: {api_name}).", ephemeral=True)
 
 class PokedexView(discord.ui.View):
     def __init__(self, pokemons):
@@ -484,7 +512,7 @@ def pokedex_html():
             <style>
                 body {{ background: #1a1a1a; font-family: Arial, sans-serif; color: white; padding: 20px; }}
                 h1 {{ text-align: center; color: #ffb7c5; text-shadow: 2px 2px 4px #000; }}
-                .grid {{ display: flex; flex-wrap: wrap; gap: 15px; justify-content: center; margin-top: 20px; }}
+                .grid {{ display: flex; flex-wrap: gap: 15px; justify-content: center; margin-top: 20px; }}
             </style>
         </head>
         <body>
