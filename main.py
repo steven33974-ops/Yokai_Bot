@@ -261,12 +261,30 @@ async def inv(ctx, member: discord.Member = None):
     pokemons = cursor.fetchall()
     
     if not pokemons:
-        await ctx.send(f"🌸 {target.mention} n'a aucun esprit !")
+        await ctx.send(f"🌸 {target.mention} n'a aucun esprit dans son clan !")
         return
 
-    liste_pokes = [f"{p[0]} {'✨' if p[1] == 1 else ''}" for p in pokemons]
-    description = ", ".join(liste_pokes[:30])
-    embed = discord.Embed(title=f"🌸 Pokédex de {target.display_name}", description=description, color=0xFFC0CB)
+    liste_pokes = []
+    nb_shinies = 0
+    for p in pokemons:
+        nom = p[0]
+        is_shiny = p[1]
+        if is_shiny == 1:
+            liste_pokes.append(f"{nom} ✨")
+            nb_shinies += 1
+        else:
+            liste_pokes.append(nom)
+
+    description = ", ".join(liste_pokes)
+    
+    embed = discord.Embed(
+        title=f"🌸 Pokédex de {target.display_name} ({len(pokemons)} esprits)",
+        description=description,
+        color=0xFFC0CB
+    )
+    if nb_shinies > 0:
+        embed.set_footer(text=f"✨ Esprits divins (Shiny) possédés : {nb_shinies}")
+        
     await ctx.send(embed=embed)
 
 @discord_bot.command()
@@ -335,7 +353,7 @@ async def champion(ctx):
 async def top(ctx):
     cursor.execute("SELECT user_id, money FROM users ORDER BY money DESC LIMIT 5")
     top_users = cursor.fetchall()
-    desc = "\n".join([f"<@ID:{u[0]}> — {u[1]}$" for u in top_users])
+    desc = "\n".join([f"<@{u[0]}> — {u[1]}$" for u in top_users])
     embed = discord.Embed(title="⛩️ Classement ⛩️", description=desc or "Aucun", color=0xFFB7C5)
     await ctx.send(embed=embed)
 
