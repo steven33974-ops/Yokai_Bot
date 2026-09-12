@@ -594,8 +594,11 @@ def current_pokemon():
         })
     return jsonify({"name": None, "anim_capture": anim_active})
 
+import os
+
 def run_flask():
-    app.run(port=5000, debug=False, use_reloader=False)
+    port = int(os.getenv("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
 
 
 # --- LANCEMENT MULTI-THREAD ---
