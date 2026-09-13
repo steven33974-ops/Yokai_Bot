@@ -4,7 +4,7 @@ import requests
 import random
 import sqlite3
 import os
-import threading
+import asyncio
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from datetime import datetime, timedelta
@@ -60,7 +60,7 @@ cursor.execute('''
     )
 ''')
 
-# --- NOUVELLES TABLES POUR LES CLANS & ÉQUIPES ---
+# --- TABLES POUR LES CLANS & ÉQUIPES ---
 cursor.execute('''
     CREATE TABLE IF NOT EXISTS equipes (
         user_id TEXT PRIMARY KEY,
@@ -143,7 +143,7 @@ def get_spawn_interval():
 # --- VUE INTERACTIVE POUR LA CAPTURE PAR BOUTONS ---
 class CaptureView(discord.ui.View):
     def __init__(self):
-        super().__init__(timeout=None)
+        super().__init__(timeout=30) # Lié au timer de fuite
 
     @discord.ui.button(label="Pokéball", style=discord.ButtonStyle.danger, emoji="🔴")
     async def btn_pokeball(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -196,7 +196,7 @@ async def tenter_capture(interaction: discord.Interaction, ball: str):
             
         cursor.execute("UPDATE users SET badges = ? WHERE user_id = ?", (current_badges, str(interaction.user.id)))
         conn.commit()
-        await interaction.followup.send(f"🌸 **{interaction.user.display_name}** a capturé avec succès **{poke}** {'✨' in shiny and '✨' or (shiny and '✨' or '')} !")
+        await interaction.followup.send(f"🌸 **{interaction.user.display_name}** a capturé avec succès **{poke}** {'✨' if shiny else ''} !")
     else:
         conn.commit()
         await interaction.followup.send(f"💨 {interaction.user.mention} a raté sa capture ! L'esprit s'est échappé...", ephemeral=True)
@@ -227,10 +227,24 @@ async def apparaitre_pokemon(channel):
         pokemon_sauvage = {"name": name, "is_shiny": is_shiny, "image_url": image_url}
         embed = discord.Embed(title=titre, description=description, color=couleur)
         embed.set_image(url=image_url)
-        embed.set_footer(text="🏮 Voie des Esprits • Utilise les boutons !")
+        embed.set_footer(text="🏮 Voie des Esprits • Tu as 30 secondes pour le capturer !")
         
         view = CaptureView()
-        await channel.send(embed=embed, view=view)
+        message = await channel.send(embed=embed, view=view)
+
+        # --- TIMER DE DISPARITION (30 secondes) ---
+        await asyncio.sleep(30)
+
+        if pokemon_sauvage and pokemon_sauvage["name"] == name:
+            pokemon_sauvage = None
+            for item in view.children:
+                item.disabled = True
+            embed.description = f"💨 L'esprit **{name}** a pris peur et s'est enfui dans la brume..."
+            embed.set_footer(text="⏰ Temps écoulé !")
+            try:
+                await message.edit(embed=embed, view=view)
+            except:
+                pass
 
 @tasks.loop(minutes=2.0)
 async def boucle_spawn():
@@ -326,7 +340,7 @@ async def resetplayer(ctx, member: discord.Member):
     conn.commit()
     await ctx.send(f"🌸 Le profil et le clan de {member.mention} ont été réinitialisés par les esprits.")
 
-# --- COMMANDES JOUEURS & FONCTIONNALITÉS ORIGINELLES ---
+# --- COMMANDES JOUEURS ---
 
 @discord_bot.command()
 async def profil(ctx, member: discord.Member = None):
@@ -361,7 +375,7 @@ async def histoire(ctx, *, texte: str = None):
     conn.commit()
     await ctx.send(f"🌸 {ctx.author.mention}, l'histoire de ton personnage a été gravée dans les registres du clan !")
 
-# --- SYSTÈME DE PAGINATION POUR LE POKÉDEX (ILLIMITÉ) ---
+# --- SYSTÈME DE PAGINATION POUR LE POKÉDEX ---
 class PokedexPaginator(discord.ui.View):
     def __init__(self, pokemons, member_name):
         super().__init__(timeout=180)
@@ -532,48 +546,41 @@ async def top(ctx):
 
 
 # =====================================================================
-# --- NOUVELLES FONCTIONNALITÉS INTÉGRÉES (Équipe, Clans, Habitation) ---
+# --- ÉQUIPES & CLANS ---
 # =====================================================================
 
-# --- 1. SYSTÈME D'ÉQUIPE (Façon Pokémon) ---
-class EquipeModal(discord.ui.Modal, title="Créer ton Équipe de Yo-Kai/Esprits"):
-    yokai1 = discord.ui.TextInput(label="1er Esprit", placeholder="Ex: Pikachu, Jibanyan...", required=True)
-    yokai2 = discord.ui.TextInput(label="2ème Esprit", placeholder="Ex: Komasan...", required=True)
-    yokai3 = discord.ui.TextInput(label="3ème Esprit", placeholder="Ex: Whisper...", required=True)
-
-    async def on_submit(self, interaction: discord.Interaction):
-        user_id = str(interaction.user.id)
-        cursor.execute("INSERT OR REPLACE INTO equipes (user_id, yokai1, yokai2, yokai3) VALUES (?, ?, ?, ?)", 
-                       (user_id, self.yokai1.value, self.yokai2.value, self.yokai3.value))
-        conn.commit()
-        
-        embed = discord.Embed(
-            title="⚔️ Équipe enregistrée !",
-            description="Voici ta nouvelle équipe prête pour le combat :",
-            color=discord.Color.blue()
-        )
-        embed.add_field(name="Membres", value=f"1. {self.yokai1.value}\n2. {self.yokai2.value}\n3. {self.yokai3.value}", inline=False)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-
 @discord_bot.command(name="equipe")
-async def equipe_cmd(ctx, action: str = "voir"):
+async def equipe_cmd(ctx, action: str = "voir", *, noms: str = None):
     user_id = str(ctx.author.id)
-    if action.lower() == "creer":
-        await ctx.interaction.response.send_modal(EquipeModal()) if hasattr(ctx, 'interaction') and ctx.interaction else await ctx.send("Utilise une commande slash ou un formulaire pour créer ton équipe, ou utilise `!equipe voir`.")
-        # Alternative textuelle simple si besoin :
-        return
-    elif action.lower() == "voir":
+    action = action.lower()
+
+    if action == "creer":
+        if noms:
+            parties = [p.strip() for p in noms.split(",")]
+            y1 = parties[0] if len(parties) > 0 else "Aucun"
+            y2 = parties[1] if len(parties) > 1 else "Aucun"
+            y3 = parties[2] if len(parties) > 2 else "Aucun"
+            
+            cursor.execute("INSERT OR REPLACE INTO equipes (user_id, yokai1, yokai2, yokai3) VALUES (?, ?, ?, ?)", (user_id, y1, y2, y3))
+            conn.commit()
+            
+            embed = discord.Embed(title="⚔️ Équipe enregistrée !", description="Voici ta nouvelle équipe prête pour le combat :", color=discord.Color.blue())
+            embed.add_field(name="Membres", value=f"1. {y1}\n2. {y2}\n3. {y3}", inline=False)
+            await ctx.send(embed=embed)
+        else:
+            await ctx.send("🌸 Pour créer ton équipe, tape : `!equipe creer Nom1, Nom2, Nom3`")
+
+    elif action == "voir":
         cursor.execute("SELECT yokai1, yokai2, yokai3 FROM equipes WHERE user_id = ?", (user_id,))
         row = cursor.fetchone()
         if not row:
-            await ctx.send("Tu n'as pas encore d'équipe enregistrée !")
+            await ctx.send("Tu n'as pas encore d'équipe enregistrée ! Tape `!equipe creer Nom1, Nom2, Nom3` pour la définir.")
             return
         embed = discord.Embed(title=f"🛡️ Équipe de {ctx.author.name}", color=discord.Color.green())
         embed.add_field(name="Composition", value=f"1. {row[0]}\n2. {row[1]}\n3. {row[2]}", inline=False)
         await ctx.send(embed=embed)
 
 
-# --- 2. SYSTÈME DE CLANS & VILLAGE ---
 @discord_bot.command(name="clan")
 async def clan_cmd(ctx, action: str = "infos", *, arg: str = None):
     user_id = str(ctx.author.id)
@@ -587,7 +594,6 @@ async def clan_cmd(ctx, action: str = "infos", *, arg: str = None):
         if cursor.fetchone():
             await ctx.send("Ce clan existe déjà !")
             return
-        # Vérifie si l'utilisateur est déjà dans un clan
         cursor.execute("SELECT nom_clan FROM clan_membres WHERE user_id = ?", (user_id,))
         if cursor.fetchone():
             await ctx.send("Tu fais déjà partie d'un clan ! Quitte-le d'abord.")
@@ -688,78 +694,7 @@ async def clan_cmd(ctx, action: str = "infos", *, arg: str = None):
             description=f"Statut actuel : **{titre_village}**\nProgression : **{points} / {palier_requis} pts**",
             color=discord.Color.purple()
         )
-        
-        progres = min(int((points / palier_requis) * 10), 10)
-        barre = "█" * progres + "░" * (10 - progres)
-        embed.add_field(name="Barre d'Évolution", value=f"`[{barre}]`", inline=False)
-        embed.set_image(url="https://images.unsplash.com/photo-1518709268805-4e9042af9f23?q=80&w=1000&auto=format&fit=crop")
-        
         await ctx.send(embed=embed)
 
-
-# --- 3. SYSTÈME D'HABITATION & ÉVOLUTION (Individuel) ---
-@discord_bot.command(name="habitation")
-async def habitation_cmd(ctx, action: str = "voir"):
-    user_id = str(ctx.author.id)
-    u_data = get_or_create_user(user_id)
-    action = action.lower()
-
-    niv = u_data["niv_habitation"]
-    evo = u_data["evo_habitation"]
-    titre = u_data["titre_habitation"]
-    palier = niv * 100
-
-    if action == "voir":
-        embed = discord.Embed(
-            title=f"🏡 Habitation de {ctx.author.name}",
-            description=f"Style actuel : **{titre}**",
-            color=discord.Color.orange()
-        )
-        embed.add_field(name="Niveau", value=str(niv), inline=True)
-        embed.add_field(name="Évolution", value=f"{evo} / {palier} pts", inline=True)
-        
-        progres = min(int((evo / palier) * 10), 10)
-        barre = "█" * progres + "░" * (10 - progres)
-        embed.add_field(name="Progression", value=f"`[{barre}]`", inline=False)
-        
-        await ctx.send(embed=embed)
-
-    elif action == "ameliorer":
-        if evo < palier:
-            await ctx.send(f"❌ Tu n'as pas assez de points d'évolution ! Il te faut **{palier} points** (tu en as {evo}).")
-            return
-        
-        niv += 1
-        evo = 0
-        if niv == 2:
-            titre = "Chambre Rénovée avec Grenier"
-        elif niv == 3:
-            titre = "Base Secrète des Esprits"
-        else:
-            titre = f"Manoir Légendaire (Niv. {niv})"
-
-        cursor.execute("UPDATE users SET niv_habitation = ?, evo_habitation = ?, titre_habitation = ? WHERE user_id = ?", (niv, evo, titre, user_id))
-        conn.commit()
-
-        embed = discord.Embed(
-            title="🎉 Amélioration réussie !",
-            description=f"Ton habitation est passée au **Niveau {niv}** !\nNouveau style : **{titre}**",
-            color=discord.Color.green()
-        )
-        await ctx.send(embed=embed)
-
-
-# Routes Flask
-@app.route('/current-pokemon')
-def current_pokemon():
-    global pokemon_sauvage, derniere_capture_anim
-    anim = bool(derniere_capture_anim)
-    derniere_capture_anim = None
-    return jsonify({**(pokemon_sauvage or {"name": None}), "anim_capture": anim})
-
-def run_flask():
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)), debug=False, use_reloader=False)
-
-if __name__ == '__main__':
-    threading.Thread(target=run_flask).start()
-    discord_bot.run(os.getenv('DISCORD_TOKEN'))
+# --- LANCEMENT DU BOT ---
+discord_bot.run("TON_TOKEN_SECRET")
