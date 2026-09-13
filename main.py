@@ -232,49 +232,67 @@ async def profil(ctx, member: discord.Member = None):
     embed.add_field(name="🎒 Inventaire", value=f"🔴 x{u_data['pokeball']} | 🔵 x{u_data['superball']} | 🟣 x{u_data['hyperball']} | 🟡 x{u_data['masterball']}\n🍬 Bonbons: {u_data['bonbon']} | 🧪 Potions: {u_data['potion']}", inline=False)
     await ctx.send(embed=embed)
 
-# INTERACTIVITÉ INVENTAIRE (Détails, XP, Bonbon)
-class PokedexSelect(discord.ui.Select):
-    def __init__(self, pokemons):
-        options = []
-        for pid, name, shiny, lvl, xp in pokemons[:25]:
-            label = f"Niv.{lvl} - {name}" + (" (Shiny)" if shiny else "")
-            options.append(discord.SelectOption(label=label, value=str(pid)))
-        super().__init__(placeholder="Choisis un esprit pour voir ou nourrir...", min_values=1, max_values=1, options=options)
+# --- NOUVEAU SYSTÈME DE PAGINATION POUR LE POKÉDEX (ILLIMITÉ) ---
+class PokedexPaginator(discord.ui.View):
+    def __init__(self, pokemons, member_name):
+        super().__init__(timeout=180)
+        self.pokemons = pokemons
+        self.member_name = member_name
+        self.current_page = 0
+        self.items_per_page = 10
+        self.max_pages = (len(pokemons) - 1) // self.items_per_page
+        self.update_buttons()
 
-    async def callback(self, interaction: discord.Interaction):
-        poke_id = int(self.values[0])
-        cursor.execute("SELECT pokemon_name, is_shiny, level, xp FROM pokedex WHERE id = ?", (poke_id,))
-        p = cursor.fetchone()
-        if not p:
-            await interaction.response.send_message("Esprit introuvable.", ephemeral=True)
-            return
-        
-        name, is_shiny, lvl, xp = p
-        api_name = get_api_name(name)
-        response = requests.get(f"https://pokeapi.co/api/v2/pokemon/{api_name}")
-        
-        embed = discord.Embed(title=f"⛩️ {name} {'✨' if is_shiny else ''}", description=f"⭐ **Niveau :** {lvl}\n✨ **XP :** {xp} / {lvl * 100}", color=0xFFB7C5)
-        if response.status_code == 200:
-            data = response.json()
-            embed.set_image(url=data['sprites']['other']['official-artwork']['front_shiny' if is_shiny else 'front_default'] or data['sprites']['front_default'])
-        
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+    def update_buttons(self):
+        self.prev_button.disabled = self.current_page == 0
+        self.next_button.disabled = self.current_page >= self.max_pages
 
-class PokedexView(discord.ui.View):
-    def __init__(self, pokemons):
-        super().__init__()
-        self.add_item(PokedexSelect(pokemons))
+    def create_embed(self):
+        start = self.current_page * self.items_per_page
+        end = start + self.items_per_page
+        page_items = self.pokemons[start:end]
+
+        embed = discord.Embed(
+            title=f"🌸 Clan de {self.member_name} (Page {self.current_page + 1}/{self.max_pages + 1})",
+            description="Voici tous les esprits capturés par le dresseur :",
+            color=0xFFC0CB
+        )
+
+        description_lines = []
+        for pid, name, shiny, lvl, xp in page_items:
+            shiny_emoji = "✨" if shiny else ""
+            description_lines.append(f"• **ID {pid}** | **Niv.{lvl}** - {name} {shiny_emoji} *(XP: {xp}/{lvl * 100})*")
+
+        embed.add_field(name="📜 Liste des Esprits", value="\n".join(description_lines), inline=False)
+        embed.set_footer(text=f"Total d'esprits : {len(self.pokemons)}")
+        return embed
+
+    @discord.ui.button(label="◀️ Précédent", style=discord.ButtonStyle.secondary)
+    async def prev_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if self.current_page > 0:
+            self.current_page -= 1
+            self.update_buttons()
+            await interaction.response.edit_message(embed=self.create_embed(), view=self)
+
+    @discord.ui.button(label="Suivant ▶️", style=discord.ButtonStyle.secondary)
+    async def next_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if self.current_page < self.max_pages:
+            self.current_page += 1
+            self.update_buttons()
+            await interaction.response.edit_message(embed=self.create_embed(), view=self)
 
 @discord_bot.command()
 async def inv(ctx, member: discord.Member = None):
     target = member or ctx.author
-    cursor.execute("SELECT id, pokemon_name, is_shiny, level, xp FROM pokedex WHERE user_id = ?", (str(target.id),))
+    cursor.execute("SELECT id, pokemon_name, is_shiny, level, xp FROM pokedex WHERE user_id = ? ORDER BY id DESC", (str(target.id),))
     pokemons = cursor.fetchall()
+    
     if not pokemons:
         await ctx.send(f"🌸 {target.mention} n'a aucun esprit dans son clan !")
         return
-    embed = discord.Embed(title=f"🌸 Clan de {target.display_name}", description="Sélectionne un esprit pour voir ses détails !", color=0xFFC0CB)
-    await ctx.send(embed=embed, view=PokedexView(pokemons))
+        
+    view = PokedexPaginator(pokemons, target.display_name)
+    await ctx.send(embed=view.create_embed(), view=view)
 
 @discord_bot.command()
 async def shop(ctx):
@@ -383,9 +401,6 @@ async def daily(ctx):
 
 @discord_bot.command()
 async def top(ctx):
-    cursor.execute("SELECT user_id, money FROM users ORDER BY money DESC LIMIT 5")
-    desc = "\n".join([f"<@{u[0]}> — {u[1]}$" for u in top_users if (top_users := cursor.fetchall())]) # Safe unpack
-    # Alternative simple:
     cursor.execute("SELECT user_id, money FROM users ORDER BY money DESC LIMIT 5")
     top_data = cursor.fetchall()
     desc = "\n".join([f"<@{u[0]}> — {u[1]}$" for u in top_data])
