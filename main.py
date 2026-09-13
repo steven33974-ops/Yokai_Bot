@@ -128,8 +128,6 @@ class CaptureView(discord.ui.View):
 
 async def tenter_capture(interaction: discord.Interaction, ball: str):
     global pokemon_sauvage, derniere_capture_anim
-    
-    # Évite l'erreur des 3 secondes de Discord
     await interaction.response.defer(ephemeral=True)
 
     if pokemon_sauvage is None:
@@ -152,7 +150,6 @@ async def tenter_capture(interaction: discord.Interaction, ball: str):
         cursor.execute("INSERT INTO pokedex (user_id, pokemon_name, is_shiny, level, xp) VALUES (?, ?, ?, 1, 0)", (str(interaction.user.id), poke, 1 if shiny else 0))
         cursor.execute("UPDATE users SET money = money + ? WHERE user_id = ?", (200 if shiny else 50, str(interaction.user.id)))
         
-        # Attribution automatique de badges selon les exploits
         cursor.execute("SELECT COUNT(*) FROM pokedex WHERE user_id = ?", (str(interaction.user.id),))
         total_captures = cursor.fetchone()[0]
         
@@ -222,6 +219,14 @@ async def on_ready():
 # --- COMMANDES ADMIN ---
 @discord_bot.command()
 @commands.has_permissions(administrator=True)
+async def adminhelp(ctx):
+    embed = discord.Embed(title="⛩️ Grimoire Administrateur ⛩️", color=0xFFB7C5)
+    embed.add_field(name="Configuration", value="`!setchannel` - Définit le salon de spawn\n`!settime <min>` - Règle l'intervalle de temps\n`!pop` - Force l'apparition d'un esprit", inline=False)
+    embed.add_field(name="Gestion Joueurs", value="`!addmoney @user <montant>`\n`!removemoney @user <montant>`\n`!givepokemon @user <nom> [True]`\n`!resetplayer @user`", inline=False)
+    await ctx.send(embed=embed)
+
+@discord_bot.command()
+@commands.has_permissions(administrator=True)
 async def setchannel(ctx, channel: discord.TextChannel = None):
     target = channel or ctx.channel
     cursor.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('spawn_channel_id', ?)", (str(target.id),))
@@ -231,11 +236,9 @@ async def setchannel(ctx, channel: discord.TextChannel = None):
 @discord_bot.command()
 @commands.has_permissions(administrator=True)
 async def settime(ctx, minutes: float):
-    """Définit l'intervalle de temps (en minutes) entre chaque apparition de Pokémon"""
     if minutes < 0.5:
         await ctx.send("🌸 L'intervalle doit être d'au moins 0.5 minutes (30 secondes).")
         return
-        
     cursor.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('spawn_interval_minutes', ?)", (str(minutes),))
     conn.commit()
     boucle_spawn.change_interval(minutes=minutes)
@@ -246,6 +249,45 @@ async def settime(ctx, minutes: float):
 async def pop_cmd(ctx):
     await apparaitre_pokemon(ctx.channel)
     await ctx.send("🌸 [ADMIN] Apparition forcée !")
+
+@discord_bot.command()
+@commands.has_permissions(administrator=True)
+async def addmoney(ctx, member: discord.Member, montant: int):
+    get_or_create_user(str(member.id))
+    cursor.execute("UPDATE users SET money = money + ? WHERE user_id = ?", (montant, str(member.id)))
+    conn.commit()
+    await ctx.send(f"🌸 {montant}$ ont été ajoutés au compte de {member.mention}.")
+
+@discord_bot.command()
+@commands.has_permissions(administrator=True)
+async def removemoney(ctx, member: discord.Member, montant: int):
+    get_or_create_user(str(member.id))
+    cursor.execute("UPDATE users SET money = MAX(0, money - ?) WHERE user_id = ?", (montant, str(member.id)))
+    conn.commit()
+    await ctx.send(f"🌸 {montant}$ ont été retirés du compte de {member.mention}.")
+
+@discord_bot.command()
+@commands.has_permissions(administrator=True)
+async def givepokemon(ctx, member: discord.Member, nom: str, shiny_flag: bool = False):
+    get_or_create_user(str(member.id))
+    poke_nom_api = get_api_name(nom)
+    resp = requests.get(f"https://pokeapi.co/api/v2/pokemon/{poke_nom_api}")
+    if resp.status_code != 200:
+        await ctx.send("🌸 Esprit introuvable dans le grand registre !")
+        return
+    data = resp.json()
+    vrai_nom = data['name'].capitalize()
+    cursor.execute("INSERT INTO pokedex (user_id, pokemon_name, is_shiny, level, xp) VALUES (?, ?, ?, 1, 0)", (str(member.id), vrai_nom, 1 if shiny_flag else 0))
+    conn.commit()
+    await ctx.send(f"🌸 L'esprit **{vrai_nom}** {'✨' if shiny_flag else ''} a été confié au clan de {member.mention} !")
+
+@discord_bot.command()
+@commands.has_permissions(administrator=True)
+async def resetplayer(ctx, member: discord.Member):
+    cursor.execute("DELETE FROM users WHERE user_id = ?", (str(member.id),))
+    cursor.execute("DELETE FROM pokedex WHERE user_id = ?", (str(member.id),))
+    conn.commit()
+    await ctx.send(f"🌸 Le profil et le clan de {member.mention} ont été réinitialisés par les esprits.")
 
 # --- COMMANDES JOUEURS & FONCTIONNALITÉS ---
 
@@ -267,21 +309,17 @@ async def profil(ctx, member: discord.Member = None):
 
 @discord_bot.command()
 async def histoire(ctx, *, texte: str = None):
-    """Permet de définir ou modifier l'histoire de son personnage"""
     u_id = str(ctx.author.id)
     get_or_create_user(u_id)
-    
     if not texte:
         u_data = get_or_create_user(u_id)
         embed = discord.Embed(title=f"📜 Histoire de {ctx.author.display_name}", description=u_data['bio'], color=0xFFB7C5)
         embed.set_footer(text="Pour modifier ton histoire, tape : !histoire <ton texte>")
         await ctx.send(embed=embed)
         return
-
     if len(texte) > 500:
         await ctx.send("🌸 Ton histoire est trop longue ! Maximum 500 caractères.")
         return
-
     cursor.execute("UPDATE users SET bio = ? WHERE user_id = ?", (texte, u_id))
     conn.commit()
     await ctx.send(f"🌸 {ctx.author.mention}, l'histoire de ton personnage a été gravée dans les registres du clan !")
@@ -340,11 +378,9 @@ async def inv(ctx, member: discord.Member = None):
     target = member or ctx.author
     cursor.execute("SELECT id, pokemon_name, is_shiny, level, xp FROM pokedex WHERE user_id = ? ORDER BY id DESC", (str(target.id),))
     pokemons = cursor.fetchall()
-    
     if not pokemons:
         await ctx.send(f"🌸 {target.mention} n'a aucun esprit dans son clan !")
         return
-        
     view = PokedexPaginator(pokemons, target.display_name)
     await ctx.send(embed=view.create_embed(), view=view)
 
@@ -375,7 +411,6 @@ async def use(ctx, objet: str, pokemon_id: int):
     obj = objet.lower()
     u_id = str(ctx.author.id)
     u = get_or_create_user(u_id)
-    
     if obj == "bonbon":
         if u["bonbon"] <= 0:
             await ctx.send("Tu n'as pas de bonbon !")
@@ -402,23 +437,18 @@ async def use(ctx, objet: str, pokemon_id: int):
 
 @discord_bot.command()
 async def feed(ctx, pokemon_id: int):
-    """Raccourci pour utiliser un bonbon"""
     ctx.invoke(use, objet="bonbon", pokemon_id=pokemon_id)
 
 @discord_bot.command()
 async def duel(ctx, opponent: discord.Member, mise: int = 50):
     if opponent == ctx.author or opponent.bot:
-        keys = ["Tu ne peux pas te battre contre toi-même !"]
-        await ctx.send(keys[0])
+        await ctx.send("Tu ne peux pas te battre contre toi-même !")
         return
-    
     u1 = get_or_create_user(str(ctx.author.id))
     u2 = get_or_create_user(str(opponent.id))
-    
     if u1["money"] < mise or u2["money"] < mise:
         await ctx.send("L'un des joueurs n'a pas assez d'argent pour cette mise !")
         return
-
     cursor.execute("SELECT SUM(level) FROM pokedex WHERE user_id = ?", (str(ctx.author.id),))
     score1 = (cursor.fetchone()[0] or 1) + random.randint(1, 20)
     cursor.execute("SELECT SUM(level) FROM pokedex WHERE user_id = ?", (str(opponent.id),))
@@ -427,11 +457,9 @@ async def duel(ctx, opponent: discord.Member, mise: int = 50):
     if score1 > score2:
         cursor.execute("UPDATE users SET money = money + ? WHERE user_id = ?", (mise, str(ctx.author.id)))
         cursor.execute("UPDATE users SET money = money - ? WHERE user_id = ?", (mise, str(opponent.id)))
-        
         c_badges = u1["badges"]
         if "⚔️ Maître des Duels" not in c_badges:
             cursor.execute("UPDATE users SET badges = ? WHERE user_id = ?", (c_badges + " | ⚔️ Maître des Duels", str(ctx.author.id)))
-            
         conn.commit()
         await ctx.send(f"⚔️ Duel remporté par {ctx.author.mention} face à {opponent.mention} ! Il remporte {mise}$ !")
     else:
