@@ -5,6 +5,7 @@ import random
 import sqlite3
 import os
 import asyncio
+import threading
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from datetime import datetime, timedelta
@@ -719,9 +720,20 @@ async def habitation_cmd(ctx, action: str = "voir"):
         conn.commit()
         await ctx.send(f"🎉 Félicitations {ctx.author.mention} ! Votre demeure a atteint le niveau **{nouveau_niv}** (**{nouveau_titre}**) !")
 
-# --- LANCEMENT DU BOT ---
-TOKEN = os.getenv("DISCORD_TOKEN")
-if TOKEN:
-    discord_bot.run(TOKEN)
-else:
-    print("Token Discord introuvable. Veuillez configurer la variable d'environnement DISCORD_TOKEN.")
+# --- LANCEMENT DU BOT ET DU SERVEUR WEB (COMPATIBLE RENDER) ---
+if __name__ == "__main__":
+    TOKEN = os.getenv("DISCORD_TOKEN")
+    PORT = int(os.environ.get("PORT", 5000))
+
+    if not TOKEN:
+        print("Token Discord introuvable. Veuillez configurer la variable d'environnement DISCORD_TOKEN.")
+    else:
+        # Démarrage de Flask dans un thread séparé pour écouter sur le port de Render
+        def run_flask():
+            app.run(host="0.0.0.0", port=PORT)
+
+        flask_thread = threading.Thread(target=run_flask)
+        flask_thread.start()
+
+        # Démarrage du bot Discord
+        discord_bot.run(TOKEN)
