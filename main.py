@@ -128,15 +128,19 @@ class CaptureView(discord.ui.View):
 
 async def tenter_capture(interaction: discord.Interaction, ball: str):
     global pokemon_sauvage, derniere_capture_anim
+    
+    # Évite l'erreur des 3 secondes de Discord
+    await interaction.response.defer(ephemeral=True)
+
     if pokemon_sauvage is None:
-        await interaction.response.send_message("Ce Pokémon a déjà disparu ou a été capturé !", ephemeral=True)
+        await interaction.followup.send("Ce Pokémon a déjà disparu ou a été capturé !", ephemeral=True)
         return
 
     user_data = get_or_create_user(str(interaction.user.id))
     taux_et_noms = {"pokeball": (70, "Pokéball"), "superball": (85, "Superball"), "hyperball": (95, "Hyperball"), "masterball": (100, "Masterball")}
 
     if user_data[ball] <= 0:
-        await interaction.response.send_message(f"Tu n'as plus de {taux_et_noms[ball][1]} dans ton inventaire !", ephemeral=True)
+        await interaction.followup.send(f"Tu n'as plus de {taux_et_noms[ball][1]} dans ton inventaire !", ephemeral=True)
         return
 
     derniere_capture_anim = ball
@@ -160,10 +164,10 @@ async def tenter_capture(interaction: discord.Interaction, ball: str):
             
         cursor.execute("UPDATE users SET badges = ? WHERE user_id = ?", (current_badges, str(interaction.user.id)))
         conn.commit()
-        await interaction.response.send_message(f"🌸 **{interaction.user.display_name}** a capturé avec succès **{poke}** {'✨' in shiny and '✨' or (shiny and '✨' or '')} !")
+        await interaction.followup.send(f"🌸 **{interaction.user.display_name}** a capturé avec succès **{poke}** {'✨' in shiny and '✨' or (shiny and '✨' or '')} !")
     else:
         conn.commit()
-        await interaction.response.send_message(f"💨 {interaction.user.mention} a raté sa capture ! L'esprit s'est échappé...", ephemeral=True)
+        await interaction.followup.send(f"💨 {interaction.user.mention} a raté sa capture ! L'esprit s'est échappé...", ephemeral=True)
 
 async def apparaitre_pokemon(channel):
     global pokemon_sauvage
@@ -252,7 +256,7 @@ async def profil(ctx, member: discord.Member = None):
 async def histoire(ctx, *, texte: str = None):
     """Permet de définir ou modifier l'histoire de son personnage"""
     u_id = str(ctx.author.id)
-    get_or_create_user(u_id) # S'assure que l'utilisateur existe
+    get_or_create_user(u_id)
     
     if not texte:
         u_data = get_or_create_user(u_id)
@@ -411,7 +415,6 @@ async def duel(ctx, opponent: discord.Member, mise: int = 50):
         cursor.execute("UPDATE users SET money = money + ? WHERE user_id = ?", (mise, str(ctx.author.id)))
         cursor.execute("UPDATE users SET money = money - ? WHERE user_id = ?", (mise, str(opponent.id)))
         
-        # Ajout badge vainqueur de duel
         c_badges = u1["badges"]
         if "⚔️ Maître des Duels" not in c_badges:
             cursor.execute("UPDATE users SET badges = ? WHERE user_id = ?", (c_badges + " | ⚔️ Maître des Duels", str(ctx.author.id)))
