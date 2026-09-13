@@ -697,43 +697,26 @@ async def habitation_cmd(ctx, action: str = "voir"):
     if action == "voir":
         embed = discord.Embed(
             title=f"⛩️ Demeure de {ctx.author.display_name} ⛩️",
-            description="C'est ici que votre vie privée de dresseur prend tout son sens. Suivez l'évolution de votre demeure personnelle, témoin de votre standing et de votre prospérité au sein du clan !",
+            description="C'est ici que votre vie privée de dresseur prend tout son sens. Suivez l'évolution de votre demeure personnelle, témoin de votre standing et de votre prospérité",
             color=0xFFB7C5
         )
-        embed.add_field(name="🏠 Titre & Standing", value=f"**{u_data['titre_habitation']}** (Niveau {u_data['niv_habitation']})", inline=False)
-        embed.add_field(name="📊 Points d'évolution", value=f"{u_data['evo_habitation']} pts", inline=True)
-        embed.add_field(name="💰 Pièces disponibles", value=f"{u_data['money']}$", inline=True)
-        embed.set_footer(text="Tape !habitation ameliorer pour transcender votre foyer.")
         await ctx.send(embed=embed)
 
-    elif action == "ameliorer":
-        niv = u_data['niv_habitation']
-        cout = niv * 500  
-        if u_data['money'] < cout:
-            await ctx.send(f"🌸 Il vous faut au moins **{cout}$** pour transcender votre foyer vers un nouveau palier !")
-            return
-        
-        nouveau_niv = niv + 1
-        nouveau_titre = "Base secrète" if nouveau_niv == 2 else "Sanctuaire personnel" if nouveau_niv >= 3 else u_data['titre_habitation']
-        
-        cursor.execute("UPDATE users SET money = money - ?, niv_habitation = ?, titre_habitation = ? WHERE user_id = ?", (cout, nouveau_niv, nouveau_titre, user_id))
-        conn.commit()
-        await ctx.send(f"🎉 Félicitations {ctx.author.mention} ! Votre demeure a atteint le niveau **{nouveau_niv}** (**{nouveau_titre}**) !")
+# --- LANCEMENT COMBINÉ FLASK ET DISCORD ---
+def run_flask():
+    # Render fournit dynamiquement un port via os.environ.get("PORT")
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
 
-# --- LANCEMENT DU BOT ET DU SERVEUR WEB (COMPATIBLE RENDER) ---
 if __name__ == "__main__":
-    TOKEN = os.getenv("DISCORD_TOKEN")
-    PORT = int(os.environ.get("PORT", 5000))
+    # Lancement de Flask dans un thread séparé pour qu'il réponde au serveur web de Render
+    flask_thread = threading.Thread(target=run_flask)
+    flask_thread.daemon = True
+    flask_thread.start()
 
-    if not TOKEN:
-        print("Token Discord introuvable. Veuillez configurer la variable d'environnement DISCORD_TOKEN.")
-    else:
-        # Démarrage de Flask dans un thread séparé pour écouter sur le port de Render
-        def run_flask():
-            app.run(host="0.0.0.0", port=PORT)
-
-        flask_thread = threading.Thread(target=run_flask)
-        flask_thread.start()
-
-        # Démarrage du bot Discord
+    # Démarrage du bot Discord
+    TOKEN = os.environ.get("DISCORD_TOKEN")
+    if TOKEN:
         discord_bot.run(TOKEN)
+    else:
+        print("Erreur : Le token Discord (DISCORD_TOKEN) n'est pas configuré dans les variables d'environnement de Render.")
