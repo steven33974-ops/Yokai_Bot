@@ -627,37 +627,62 @@ async def recompense_cmd(ctx):
 
 
 # =====================================================================
-# --- ÉQUIPES, CLANS & HABITATION ---
+# --- ÉQUIPES, CLANS & HABITATION (AVEC BOUTONS INTERACTIFS) ---
 # =====================================================================
 
+# --- MODALE INTERACTIVE POUR L'ÉQUIPE ---
+class EquipeModal(discord.ui.Modal, title="Sceller son Équipe de Yōkai"):
+    yokai1 = discord.ui.TextInput(label="1er Esprit (Nom ou ID)", placeholder="Ex: Pikachu", required=True)
+    yokai2 = discord.ui.TextInput(label="2ème Esprit (Optionnel)", placeholder="Ex: Dracaufeu", required=False)
+    yokai3 = discord.ui.TextInput(label="3ème Esprit (Optionnel)", placeholder="Ex: Mewtwo", required=False)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        user_id = str(interaction.user.id)
+        y1 = self.yokai1.value or "Aucun"
+        y2 = self.yokai2.value or "Aucun"
+        y3 = self.yokai3.value or "Aucun"
+        
+        cursor.execute("INSERT OR REPLACE INTO equipes (user_id, yokai1, yokai2, yokai3) VALUES (?, ?, ?, ?)", (user_id, y1, y2, y3))
+        conn.commit()
+        
+        embed = discord.Embed(
+            title="⚔️ Équipe enregistrée avec succès !",
+            description="Voici ta nouvelle composition prête pour les duels :",
+            color=0xFFB7C5
+        )
+        embed.add_field(name="Membres", value=f"1. {y1}\n2. {y2}\n3. {y3}", inline=False)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+# --- VUE AVEC BOUTON POUR OUVRIR LE FORMULAIRE ---
+class EquipeView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="Modifier / Créer mon équipe", style=discord.ButtonStyle.primary, emoji="🛡️")
+    async def btn_creer_equipe(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(EquipeModal())
+
 @discord_bot.command(name="equipe")
-async def equipe_cmd(ctx, action: str = "voir", *, noms: str = None):
+async def equipe_cmd(ctx, action: str = "voir", member: discord.Member = None):
     user_id = str(ctx.author.id)
     action = action.lower()
 
     if action == "creer":
-        if noms:
-            parties = [p.strip() for p in noms.split(",")]
-            y1 = parties[0] if len(parties) > 0 else "Aucun"
-            y2 = parties[1] if len(parties) > 1 else "Aucun"
-            y3 = parties[2] if len(parties) > 2 else "Aucun"
-            
-            cursor.execute("INSERT OR REPLACE INTO equipes (user_id, yokai1, yokai2, yokai3) VALUES (?, ?, ?, ?)", (user_id, y1, y2, y3))
-            conn.commit()
-            
-            embed = discord.Embed(title="⚔️ Équipe enregistrée !", description="Voici ta nouvelle équipe prête pour le combat :", color=discord.Color.blue())
-            embed.add_field(name="Membres", value=f"1. {y1}\n2. {y2}\n3. {y3}", inline=False)
-            await ctx.send(embed=embed)
-        else:
-            await ctx.send("🌸 Pour créer ton équipe, tape : `!equipe creer Nom1, Nom2, Nom3`")
+        embed = discord.Embed(
+            title="⚔️ Gestion de l'Équipe de Yōkai",
+            description="Clique sur le bouton ci-dessous pour ouvrir le formulaire et choisir tes 3 esprits principaux !",
+            color=0xFFB7C5
+        )
+        await ctx.send(embed=embed, view=EquipeView())
 
     elif action == "voir":
-        cursor.execute("SELECT yokai1, yokai2, yokai3 FROM equipes WHERE user_id = ?", (user_id,))
+        target = member or ctx.author
+        cursor.execute("SELECT yokai1, yokai2, yokai3 FROM equipes WHERE user_id = ?", (str(target.id),))
         row = cursor.fetchone()
         if not row:
-            await ctx.send("Tu n'as pas encore d'équipe enregistrée ! Tape `!equipe creer Nom1, Nom2, Nom3` pour la définir.")
+            await ctx.send(f"🌸 {target.mention} n'a pas encore d'équipe enregistrée ! Tape `!equipe creer` pour la configurer.")
             return
-        embed = discord.Embed(title=f"🛡️ Équipe de {ctx.author.name}", color=discord.Color.green())
+        embed = discord.Embed(title=f"🛡️ Équipe de {target.display_name}", color=0xFFC0CB)
         embed.add_field(name="Composition", value=f"1. {row[0]}\n2. {row[1]}\n3. {row[2]}", inline=False)
         await ctx.send(embed=embed)
 
@@ -692,132 +717,11 @@ async def habitation_cmd(ctx, action: str = "voir"):
         
         cursor.execute("UPDATE users SET money = money - ?, niv_habitation = ?, titre_habitation = ? WHERE user_id = ?", (cout, nouveau_niv, nouveau_titre, user_id))
         conn.commit()
-        
-        embed = discord.Embed(
-            title="✨ Transcendance du Foyer ✨",
-            description=f"Votre foyer a évolué vers le niveau **{nouveau_niv}** !\nNouveau titre acquis : **{nouveau_titre}**.",
-            color=0xFFC0CB
-        )
-        await ctx.send(embed=embed)
-
-
-@discord_bot.command(name="clan")
-async def clan_cmd(ctx, action: str = "infos", *, arg: str = None):
-    user_id = str(ctx.author.id)
-    action = action.lower()
-
-    if action == "creer":
-        if not arg:
-            await ctx.send("Tu dois indiquer le nom du clan que tu veux créer ! Ex: `!clan creer <nom>`")
-            return
-        cursor.execute("SELECT nom_clan FROM clans WHERE nom_clan = ?", (arg,))
-        if cursor.fetchone():
-            await ctx.send("Ce clan existe déjà !")
-            return
-        cursor.execute("SELECT nom_clan FROM clan_membres WHERE user_id = ?", (user_id,))
-        if cursor.fetchone():
-            await ctx.send("Tu fais déjà partie d'un clan ! Quitte-le d'abord.")
-            return
-
-        cursor.execute("INSERT INTO clans (nom_clan, leader, niveau_village, points_village) VALUES (?, ?, 1, 0)", (arg, user_id))
-        cursor.execute("INSERT OR REPLACE INTO clan_membres (user_id, nom_clan) VALUES (?, ?)", (user_id, arg))
-        conn.commit()
-        await ctx.send(f"🎉 Le clan **{arg}** a été créé avec succès ! Tu en es le leader.")
-
-    elif action == "rejoindre":
-        if not arg:
-            await ctx.send("Tu dois indiquer le nom du clan à rejoindre !")
-            return
-        cursor.execute("SELECT nom_clan FROM clans WHERE nom_clan = ?", (arg,))
-        if not cursor.fetchone():
-            await ctx.send("Ce clan n'existe pas.")
-            return
-        cursor.execute("SELECT nom_clan FROM clan_membres WHERE user_id = ?", (user_id,))
-        if cursor.fetchone():
-            await ctx.send("Tu fais déjà partie d'un clan !")
-            return
-
-        cursor.execute("INSERT OR REPLACE INTO clan_membres (user_id, nom_clan) VALUES (?, ?)", (user_id, arg))
-        conn.commit()
-        await ctx.send(f"🤝 Tu as rejoint le clan **{arg}** avec succès !")
-
-    elif action == "infos":
-        cursor.execute("SELECT nom_clan FROM clan_membres WHERE user_id = ?", (user_id,))
-        res = cursor.fetchone()
-        if not res:
-            await ctx.send("Tu ne fais partie d'aucun clan pour le moment.")
-            return
-        nom_clan = res[0]
-        cursor.execute("SELECT leader, niveau_village FROM clans WHERE nom_clan = ?", (nom_clan,))
-        c_data = cursor.fetchone()
-        cursor.execute("SELECT COUNT(*) FROM clan_membres WHERE nom_clan = ?", (nom_clan,))
-        nb_membres = cursor.fetchone()[0]
-
-        embed = discord.Embed(title=f"🏰 Clan : {nom_clan}", color=discord.Color.gold())
-        embed.add_field(name="Leader", value=f"<@{c_data[0]}>", inline=True)
-        embed.add_field(name="Membres", value=str(nb_membres), inline=True)
-        embed.add_field(name="Niveau du Village", value=str(c_data[1]), inline=True)
-        await ctx.send(embed=embed)
-
-    elif action == "investir":
-        montant = int(arg) if arg and arg.isdigit() else 50
-        cursor.execute("SELECT nom_clan FROM clan_membres WHERE user_id = ?", (user_id,))
-        res = cursor.fetchone()
-        if not res:
-            await ctx.send("❌ Tu dois appartenir à un clan pour investir !")
-            return
-        nom_clan = res[0]
-
-        cursor.execute("SELECT niveau_village, points_village FROM clans WHERE nom_clan = ?", (nom_clan,))
-        c_data = cursor.fetchone()
-        niveau, points = c_data[0], c_data[1] + montant
-        
-        palier_requis = niveau * 500
-        message_lvl_up = ""
-        if points >= palier_requis:
-            niveau += 1
-            points = 0
-            message_lvl_up = f"\n\n🎊 **INCROYABLE !** Le village du clan est passé au **Niveau {niveau}** !"
-
-        cursor.execute("UPDATE clans SET niveau_village = ?, points_village = ? WHERE nom_clan = ?", (niveau, points, nom_clan))
-        
-        # Progression quête investir
-        cursor.execute("UPDATE quetes SET progression = MIN(objectif, progression + 1), terminee = 1 WHERE user_id = ? AND type_quete = 'investir' AND terminee = 0", (user_id,))
-        conn.commit()
-
-        embed = discord.Embed(
-            title="📈 Investissement réussi !",
-            description=f"Tu as investi **{montant} points** dans le village de ton clan (**{nom_clan}**).{message_lvl_up}",
-            color=discord.Color.green()
-        )
-        await ctx.send(embed=embed)
-
-    elif action == "village":
-        cursor.execute("SELECT nom_clan FROM clan_membres WHERE user_id = ?", (user_id,))
-        res = cursor.fetchone()
-        if not res:
-            await ctx.send("❌ Tu ne fais partie d'aucun clan !")
-            return
-        nom_clan = res[0]
-
-        cursor.execute("SELECT niveau_village, points_village FROM clans WHERE nom_clan = ?", (nom_clan,))
-        c_data = cursor.fetchone()
-        niveau, points = c_data[0], c_data[1]
-        palier_requis = niveau * 500
-
-        if niveau == 1:
-            titre_village = "🏕️ Petit Campement de Nomades"
-        elif niveau == 2:
-            titre_village = "🏡 Village Rénové et Fortifié"
-        else:
-            titre_village = "🏰 Grande Forteresse Imprenable"
-
-        embed = discord.Embed(
-            title=f"Village du Clan : {nom_clan}",
-            description=f"Statut actuel : **{titre_village}**\nProgression : **{points} / {palier_requis} pts**",
-            color=discord.Color.purple()
-        )
-        await ctx.send(embed=embed)
+        await ctx.send(f"🎉 Félicitations {ctx.author.mention} ! Votre demeure a atteint le niveau **{nouveau_niv}** (**{nouveau_titre}**) !")
 
 # --- LANCEMENT DU BOT ---
-discord_bot.run("TON_TOKEN_SECRET")
+TOKEN = os.getenv("DISCORD_TOKEN")
+if TOKEN:
+    discord_bot.run(TOKEN)
+else:
+    print("Token Discord introuvable. Veuillez configurer la variable d'environnement DISCORD_TOKEN.")
