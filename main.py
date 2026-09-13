@@ -120,7 +120,6 @@ intents.message_content = True
 discord_bot = commands.Bot(command_prefix="!", intents=intents)
 
 pokemon_sauvage = None
-derniere_capture_anim = None
 
 def get_or_create_user(user_id):
     u_id = str(user_id)
@@ -200,7 +199,7 @@ async def executer_capture(user_id_str, user_display_name, ball, channel_or_inte
         else: await channel_or_interaction.send(success_msg)
     else:
         conn.commit()
-        fail_msg = f"💨 {user_display_name} a raté sa capture ! L'esprit s'éechappé..."
+        fail_msg = f"💨 {user_display_name} a raté sa capture ! L'esprit s'est échappé..."
         if is_interaction: await channel_or_interaction.followup.send(fail_msg, ephemeral=True)
         else: await channel_or_interaction.send(fail_msg)
 
@@ -694,7 +693,6 @@ async def clan_investir(ctx, montant: int):
     cursor.execute("UPDATE users SET money = money - ? WHERE user_id = ?", (montant, u_id))
     cursor.execute("UPDATE clans SET points_village = points_village + ? WHERE nom_clan = ?", (montant, c_name))
     
-    # Progression quête 'investir'
     cursor.execute("UPDATE quetes SET progression = MIN(objectif, progression + 1), terminee = CASE WHEN progression + 1 >= objectif THEN 1 ELSE 0 END WHERE user_id = ? AND type_quete = 'investir' AND terminee = 0", (u_id,))
     conn.commit()
     await ctx.send(f"⛩️ Investissement de {montant}$ réussi pour le clan **{c_name}** !")
@@ -712,7 +710,7 @@ async def clan_village(ctx):
     await ctx.send(f"🏯 Village du clan **{res[0]}**\n• Niveau : {niv}\n• Points de prospérité : {pts}")
 
 
-# --- HABITATION ---
+# --- HABITATION (AVEC DESIGN EXACT DE L'IMAGE) ---
 @discord_bot.command(name="habitation")
 async def habitation_cmd(ctx, action: str = "voir"):
     user_id = str(ctx.author.id)
@@ -720,11 +718,22 @@ async def habitation_cmd(ctx, action: str = "voir"):
     action = action.lower()
 
     if action == "voir":
-        embed = discord.Embed(
-            title=f"⛩️ Demeure de {ctx.author.display_name}",
-            description=f"**Niveau :** {u_data['niv_habitation']}\n**Titre :** {u_data['titre_habitation']}",
-            color=0xFFB7C5
-        )
+        niv = u_data['niv_habitation']
+        evo = u_data['evo_habitation']
+        titre = u_data['titre_habitation']
+        
+        max_evo = 100
+        remplis = int((evo / max_evo) * 10)
+        barre = "▓" * remplis + "░" * (10 - remplis)
+        progression_str = f"[{barre}]"
+
+        embed = discord.Embed(color=0xFFB7C5)
+        embed.set_author(name=f"🏡 Habitation de {ctx.author.display_name}")
+        embed.description = f"Style actuel : **{titre}**"
+        embed.add_field(name="Niveau", value=str(niv), inline=True)
+        embed.add_field(name="Évolution", value=f"{evo} / {max_evo} pts", inline=True)
+        embed.add_field(name="Progression", value=f"`{progression_str}`", inline=False)
+        
         await ctx.send(embed=embed)
 
     elif action == "ameliorer":
