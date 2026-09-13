@@ -61,12 +61,14 @@ cursor.execute('''
 ''')
 conn.commit()
 
-# Vérification et ajout des colonnes d'inventaire
+# Vérification et ajout des colonnes d'inventaire, histoire et badges
 nouvelles_colonnes = [
     ("pokeball", "INTEGER DEFAULT 5"), ("superball", "INTEGER DEFAULT 0"),
     ("hyperball", "INTEGER DEFAULT 0"), ("masterball", "INTEGER DEFAULT 0"),
     ("potion", "INTEGER DEFAULT 0"), ("rappel", "INTEGER DEFAULT 0"),
-    ("bonbon", "INTEGER DEFAULT 0")
+    ("bonbon", "INTEGER DEFAULT 0"),
+    ("bio", "TEXT DEFAULT 'Aucune histoire écrite pour l''instant...'"),
+    ("badges", "TEXT DEFAULT '🏮 Novice du Sanctuaire'")
 ]
 cursor.execute("PRAGMA table_info(users)")
 colonnes_existantes = [col[1] for col in cursor.fetchall()]
@@ -85,13 +87,13 @@ derniere_capture_anim = None
 
 def get_or_create_user(user_id):
     u_id = str(user_id)
-    cursor.execute("SELECT pokeball, superball, hyperball, masterball, potion, rappel, bonbon, money, last_daily FROM users WHERE user_id = ?", (u_id,))
+    cursor.execute("SELECT pokeball, superball, hyperball, masterball, potion, rappel, bonbon, money, last_daily, bio, badges FROM users WHERE user_id = ?", (u_id,))
     data = cursor.fetchone()
     if not data:
-        cursor.execute("INSERT INTO users (user_id, pokeball, superball, hyperball, masterball, potion, rappel, bonbon, money, last_daily) VALUES (?, 5, 0, 0, 0, 0, 0, 0, 100, NULL)", (u_id,))
+        cursor.execute("INSERT INTO users (user_id, pokeball, superball, hyperball, masterball, potion, rappel, bonbon, money, last_daily, bio, badges) VALUES (?, 5, 0, 0, 0, 0, 0, 0, 100, NULL, 'Aucune histoire écrite pour l''instant...', '🏮 Novice du Sanctuaire')", (u_id,))
         conn.commit()
-        return {"pokeball": 5, "superball": 0, "hyperball": 0, "masterball": 0, "potion": 0, "rappel": 0, "bonbon": 0, "money": 100, "last_daily": None}
-    return {"pokeball": data[0], "superball": data[1], "hyperball": data[2], "masterball": data[3], "potion": data[4], "rappel": data[5], "bonbon": data[6], "money": data[7], "last_daily": data[8]}
+        return {"pokeball": 5, "superball": 0, "hyperball": 0, "masterball": 0, "potion": 0, "rappel": 0, "bonbon": 0, "money": 100, "last_daily": None, "bio": "Aucune histoire écrite pour l'instant...", "badges": "🏮 Novice du Sanctuaire"}
+    return {"pokeball": data[0], "superball": data[1], "hyperball": data[2], "masterball": data[3], "potion": data[4], "rappel": data[5], "bonbon": data[6], "money": data[7], "last_daily": data[8], "bio": data[9], "badges": data[10]}
 
 def get_spawn_channel_id():
     cursor.execute("SELECT value FROM config WHERE key = 'spawn_channel_id'")
@@ -145,6 +147,18 @@ async def tenter_capture(interaction: discord.Interaction, ball: str):
         pokemon_sauvage = None
         cursor.execute("INSERT INTO pokedex (user_id, pokemon_name, is_shiny, level, xp) VALUES (?, ?, ?, 1, 0)", (str(interaction.user.id), poke, 1 if shiny else 0))
         cursor.execute("UPDATE users SET money = money + ? WHERE user_id = ?", (200 if shiny else 50, str(interaction.user.id)))
+        
+        # Attribution automatique de badges selon les exploits
+        cursor.execute("SELECT COUNT(*) FROM pokedex WHERE user_id = ?", (str(interaction.user.id),))
+        total_captures = cursor.fetchone()[0]
+        
+        current_badges = user_data["badges"]
+        if shiny and "🌸 Chasseur de Shiny" not in current_badges:
+            current_badges += " | 🌸 Chasseur de Shiny"
+        if total_captures >= 10 and "⛩️ Gardien des Esprits" not in current_badges:
+            current_badges += " | ⛩️ Gardien des Esprits"
+            
+        cursor.execute("UPDATE users SET badges = ? WHERE user_id = ?", (current_badges, str(interaction.user.id)))
         conn.commit()
         await interaction.response.send_message(f"🌸 **{interaction.user.display_name}** a capturé avec succès **{poke}** {'✨' in shiny and '✨' or (shiny and '✨' or '')} !")
     else:
@@ -229,10 +243,33 @@ async def profil(ctx, member: discord.Member = None):
     embed = discord.Embed(title=f"⛩️ Profil de {target.display_name} ⛩️", color=0xFFB7C5)
     embed.add_field(name="💰 Argent", value=f"{u_data['money']}$", inline=True)
     embed.add_field(name="📖 Esprits", value=f"{nb_pokes} (Niveau cumulé: {total_lvl})", inline=True)
+    embed.add_field(name="🏆 Badges du Clan", value=u_data['badges'], inline=False)
+    embed.add_field(name="📜 Histoire du Personnage", value=u_data['bio'], inline=False)
     embed.add_field(name="🎒 Inventaire", value=f"🔴 x{u_data['pokeball']} | 🔵 x{u_data['superball']} | 🟣 x{u_data['hyperball']} | 🟡 x{u_data['masterball']}\n🍬 Bonbons: {u_data['bonbon']} | 🧪 Potions: {u_data['potion']}", inline=False)
     await ctx.send(embed=embed)
 
-# --- NOUVEAU SYSTÈME DE PAGINATION POUR LE POKÉDEX (ILLIMITÉ) ---
+@discord_bot.command()
+async def histoire(ctx, *, texte: str = None):
+    """Permet de définir ou modifier l'histoire de son personnage"""
+    u_id = str(ctx.author.id)
+    get_or_create_user(u_id) # S'assure que l'utilisateur existe
+    
+    if not texte:
+        u_data = get_or_create_user(u_id)
+        embed = discord.Embed(title=f"📜 Histoire de {ctx.author.display_name}", description=u_data['bio'], color=0xFFB7C5)
+        embed.set_footer(text="Pour modifier ton histoire, tape : !histoire <ton texte>")
+        await ctx.send(embed=embed)
+        return
+
+    if len(texte) > 500:
+        await ctx.send("🌸 Ton histoire est trop longue ! Maximum 500 caractères.")
+        return
+
+    cursor.execute("UPDATE users SET bio = ? WHERE user_id = ?", (texte, u_id))
+    conn.commit()
+    await ctx.send(f"🌸 {ctx.author.mention}, l'histoire de ton personnage a été gravée dans les registres du clan !")
+
+# --- SYSTÈME DE PAGINATION POUR LE POKÉDEX (ILLIMITÉ) ---
 class PokedexPaginator(discord.ui.View):
     def __init__(self, pokemons, member_name):
         super().__init__(timeout=180)
@@ -373,6 +410,12 @@ async def duel(ctx, opponent: discord.Member, mise: int = 50):
     if score1 > score2:
         cursor.execute("UPDATE users SET money = money + ? WHERE user_id = ?", (mise, str(ctx.author.id)))
         cursor.execute("UPDATE users SET money = money - ? WHERE user_id = ?", (mise, str(opponent.id)))
+        
+        # Ajout badge vainqueur de duel
+        c_badges = u1["badges"]
+        if "⚔️ Maître des Duels" not in c_badges:
+            cursor.execute("UPDATE users SET badges = ? WHERE user_id = ?", (c_badges + " | ⚔️ Maître des Duels", str(ctx.author.id)))
+            
         conn.commit()
         await ctx.send(f"⚔️ Duel remporté par {ctx.author.mention} face à {opponent.mention} ! Il remporte {mise}$ !")
     else:
