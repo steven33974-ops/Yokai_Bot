@@ -59,16 +59,46 @@ cursor.execute('''
         value TEXT
     )
 ''')
+
+# --- NOUVELLES TABLES POUR LES CLANS & ÉQUIPES ---
+cursor.execute('''
+    CREATE TABLE IF NOT EXISTS equipes (
+        user_id TEXT PRIMARY KEY,
+        yokai1 TEXT,
+        yokai2 TEXT,
+        yokai3 TEXT
+    )
+''')
+
+cursor.execute('''
+    CREATE TABLE IF NOT EXISTS clans (
+        nom_clan TEXT PRIMARY KEY,
+        leader TEXT,
+        niveau_village INTEGER DEFAULT 1,
+        points_village INTEGER DEFAULT 0
+    )
+''')
+
+cursor.execute('''
+    CREATE TABLE IF NOT EXISTS clan_membres (
+        user_id TEXT PRIMARY KEY,
+        nom_clan TEXT
+    )
+''')
+
 conn.commit()
 
-# Vérification et ajout des colonnes d'inventaire, histoire et badges
+# Vérification et ajout des colonnes d'inventaire, histoire, badges et habitation
 nouvelles_colonnes = [
     ("pokeball", "INTEGER DEFAULT 5"), ("superball", "INTEGER DEFAULT 0"),
     ("hyperball", "INTEGER DEFAULT 0"), ("masterball", "INTEGER DEFAULT 0"),
     ("potion", "INTEGER DEFAULT 0"), ("rappel", "INTEGER DEFAULT 0"),
     ("bonbon", "INTEGER DEFAULT 0"),
     ("bio", "TEXT DEFAULT 'Aucune histoire écrite pour l''instant...'"),
-    ("badges", "TEXT DEFAULT '🏮 Novice du Sanctuaire'")
+    ("badges", "TEXT DEFAULT '🏮 Novice du Sanctuaire'"),
+    ("niv_habitation", "INTEGER DEFAULT 1"),
+    ("evo_habitation", "INTEGER DEFAULT 0"),
+    ("titre_habitation", "TEXT DEFAULT 'Chambre d''apprenti'")
 ]
 cursor.execute("PRAGMA table_info(users)")
 colonnes_existantes = [col[1] for col in cursor.fetchall()]
@@ -87,13 +117,18 @@ derniere_capture_anim = None
 
 def get_or_create_user(user_id):
     u_id = str(user_id)
-    cursor.execute("SELECT pokeball, superball, hyperball, masterball, potion, rappel, bonbon, money, last_daily, bio, badges FROM users WHERE user_id = ?", (u_id,))
+    cursor.execute("SELECT pokeball, superball, hyperball, masterball, potion, rappel, bonbon, money, last_daily, bio, badges, niv_habitation, evo_habitation, titre_habitation FROM users WHERE user_id = ?", (u_id,))
     data = cursor.fetchone()
     if not data:
-        cursor.execute("INSERT INTO users (user_id, pokeball, superball, hyperball, masterball, potion, rappel, bonbon, money, last_daily, bio, badges) VALUES (?, 5, 0, 0, 0, 0, 0, 0, 100, NULL, 'Aucune histoire écrite pour l''instant...', '🏮 Novice du Sanctuaire')", (u_id,))
+        cursor.execute("INSERT INTO users (user_id, pokeball, superball, hyperball, masterball, potion, rappel, bonbon, money, last_daily, bio, badges, niv_habitation, evo_habitation, titre_habitation) VALUES (?, 5, 0, 0, 0, 0, 0, 0, 100, NULL, 'Aucune histoire écrite pour l''instant...', '🏮 Novice du Sanctuaire', 1, 0, 'Chambre d''apprenti')", (u_id,))
         conn.commit()
-        return {"pokeball": 5, "superball": 0, "hyperball": 0, "masterball": 0, "potion": 0, "rappel": 0, "bonbon": 0, "money": 100, "last_daily": None, "bio": "Aucune histoire écrite pour l'instant...", "badges": "🏮 Novice du Sanctuaire"}
-    return {"pokeball": data[0], "superball": data[1], "hyperball": data[2], "masterball": data[3], "potion": data[4], "rappel": data[5], "bonbon": data[6], "money": data[7], "last_daily": data[8], "bio": data[9], "badges": data[10]}
+        return {"pokeball": 5, "superball": 0, "hyperball": 0, "masterball": 0, "potion": 0, "rappel": 0, "bonbon": 0, "money": 100, "last_daily": None, "bio": "Aucune histoire écrite pour l'instant...", "badges": "🏮 Novice du Sanctuaire", "niv_habitation": 1, "evo_habitation": 0, "titre_habitation": "Chambre d'apprenti"}
+    return {
+        "pokeball": data[0], "superball": data[1], "hyperball": data[2], "masterball": data[3], 
+        "potion": data[4], "rappel": data[5], "bonbon": data[6], "money": data[7], 
+        "last_daily": data[8], "bio": data[9], "badges": data[10],
+        "niv_habitation": data[11], "evo_habitation": data[12], "titre_habitation": data[13]
+    }
 
 def get_spawn_channel_id():
     cursor.execute("SELECT value FROM config WHERE key = 'spawn_channel_id'")
@@ -286,10 +321,12 @@ async def givepokemon(ctx, member: discord.Member, nom: str, shiny_flag: bool = 
 async def resetplayer(ctx, member: discord.Member):
     cursor.execute("DELETE FROM users WHERE user_id = ?", (str(member.id),))
     cursor.execute("DELETE FROM pokedex WHERE user_id = ?", (str(member.id),))
+    cursor.execute("DELETE FROM equipes WHERE user_id = ?", (str(member.id),))
+    cursor.execute("DELETE FROM clan_membres WHERE user_id = ?", (str(member.id),))
     conn.commit()
     await ctx.send(f"🌸 Le profil et le clan de {member.mention} ont été réinitialisés par les esprits.")
 
-# --- COMMANDES JOUEURS & FONCTIONNALITÉS ---
+# --- COMMANDES JOUEURS & FONCTIONNALITÉS ORIGINELLES ---
 
 @discord_bot.command()
 async def profil(ctx, member: discord.Member = None):
@@ -492,6 +529,225 @@ async def top(ctx):
     desc = "\n".join([f"<@{u[0]}> — {u[1]}$" for u in top_data])
     embed = discord.Embed(title="⛩️ Classement des Richesses ⛩️", description=desc or "Aucun", color=0xFFB7C5)
     await ctx.send(embed=embed)
+
+
+# =====================================================================
+# --- NOUVELLES FONCTIONNALITÉS INTÉGRÉES (Équipe, Clans, Habitation) ---
+# =====================================================================
+
+# --- 1. SYSTÈME D'ÉQUIPE (Façon Pokémon) ---
+class EquipeModal(discord.ui.Modal, title="Créer ton Équipe de Yo-Kai/Esprits"):
+    yokai1 = discord.ui.TextInput(label="1er Esprit", placeholder="Ex: Pikachu, Jibanyan...", required=True)
+    yokai2 = discord.ui.TextInput(label="2ème Esprit", placeholder="Ex: Komasan...", required=True)
+    yokai3 = discord.ui.TextInput(label="3ème Esprit", placeholder="Ex: Whisper...", required=True)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        user_id = str(interaction.user.id)
+        cursor.execute("INSERT OR REPLACE INTO equipes (user_id, yokai1, yokai2, yokai3) VALUES (?, ?, ?, ?)", 
+                       (user_id, self.yokai1.value, self.yokai2.value, self.yokai3.value))
+        conn.commit()
+        
+        embed = discord.Embed(
+            title="⚔️ Équipe enregistrée !",
+            description="Voici ta nouvelle équipe prête pour le combat :",
+            color=discord.Color.blue()
+        )
+        embed.add_field(name="Membres", value=f"1. {self.yokai1.value}\n2. {self.yokai2.value}\n3. {self.yokai3.value}", inline=False)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+@discord_bot.command(name="equipe")
+async def equipe_cmd(ctx, action: str = "voir"):
+    user_id = str(ctx.author.id)
+    if action.lower() == "creer":
+        await ctx.interaction.response.send_modal(EquipeModal()) if hasattr(ctx, 'interaction') and ctx.interaction else await ctx.send("Utilise une commande slash ou un formulaire pour créer ton équipe, ou utilise `!equipe voir`.")
+        # Alternative textuelle simple si besoin :
+        return
+    elif action.lower() == "voir":
+        cursor.execute("SELECT yokai1, yokai2, yokai3 FROM equipes WHERE user_id = ?", (user_id,))
+        row = cursor.fetchone()
+        if not row:
+            await ctx.send("Tu n'as pas encore d'équipe enregistrée !")
+            return
+        embed = discord.Embed(title=f"🛡️ Équipe de {ctx.author.name}", color=discord.Color.green())
+        embed.add_field(name="Composition", value=f"1. {row[0]}\n2. {row[1]}\n3. {row[2]}", inline=False)
+        await ctx.send(embed=embed)
+
+
+# --- 2. SYSTÈME DE CLANS & VILLAGE ---
+@discord_bot.command(name="clan")
+async def clan_cmd(ctx, action: str = "infos", *, arg: str = None):
+    user_id = str(ctx.author.id)
+    action = action.lower()
+
+    if action == "creer":
+        if not arg:
+            await ctx.send("Tu dois indiquer le nom du clan que tu veux créer ! Ex: `!clan creer <nom>`")
+            return
+        cursor.execute("SELECT nom_clan FROM clans WHERE nom_clan = ?", (arg,))
+        if cursor.fetchone():
+            await ctx.send("Ce clan existe déjà !")
+            return
+        # Vérifie si l'utilisateur est déjà dans un clan
+        cursor.execute("SELECT nom_clan FROM clan_membres WHERE user_id = ?", (user_id,))
+        if cursor.fetchone():
+            await ctx.send("Tu fais déjà partie d'un clan ! Quitte-le d'abord.")
+            return
+
+        cursor.execute("INSERT INTO clans (nom_clan, leader, niveau_village, points_village) VALUES (?, ?, 1, 0)", (arg, user_id))
+        cursor.execute("INSERT OR REPLACE INTO clan_membres (user_id, nom_clan) VALUES (?, ?)", (user_id, arg))
+        conn.commit()
+        await ctx.send(f"🎉 Le clan **{arg}** a été créé avec succès ! Tu en es le leader.")
+
+    elif action == "rejoindre":
+        if not arg:
+            await ctx.send("Tu dois indiquer le nom du clan à rejoindre !")
+            return
+        cursor.execute("SELECT nom_clan FROM clans WHERE nom_clan = ?", (arg,))
+        if not cursor.fetchone():
+            await ctx.send("Ce clan n'existe pas.")
+            return
+        cursor.execute("SELECT nom_clan FROM clan_membres WHERE user_id = ?", (user_id,))
+        if cursor.fetchone():
+            await ctx.send("Tu fais déjà partie d'un clan !")
+            return
+
+        cursor.execute("INSERT OR REPLACE INTO clan_membres (user_id, nom_clan) VALUES (?, ?)", (user_id, arg))
+        conn.commit()
+        await ctx.send(f"🤝 Tu as rejoint le clan **{arg}** avec succès !")
+
+    elif action == "infos":
+        cursor.execute("SELECT nom_clan FROM clan_membres WHERE user_id = ?", (user_id,))
+        res = cursor.fetchone()
+        if not res:
+            await ctx.send("Tu ne fais partie d'aucun clan pour le moment.")
+            return
+        nom_clan = res[0]
+        cursor.execute("SELECT leader, niveau_village FROM clans WHERE nom_clan = ?", (nom_clan,))
+        c_data = cursor.fetchone()
+        cursor.execute("SELECT COUNT(*) FROM clan_membres WHERE nom_clan = ?", (nom_clan,))
+        nb_membres = cursor.fetchone()[0]
+
+        embed = discord.Embed(title=f"🏰 Clan : {nom_clan}", color=discord.Color.gold())
+        embed.add_field(name="Leader", value=f"<@{c_data[0]}>", inline=True)
+        embed.add_field(name="Membres", value=str(nb_membres), inline=True)
+        embed.add_field(name="Niveau du Village", value=str(c_data[1]), inline=True)
+        await ctx.send(embed=embed)
+
+    elif action == "investir":
+        montant = int(arg) if arg and arg.isdigit() else 50
+        cursor.execute("SELECT nom_clan FROM clan_membres WHERE user_id = ?", (user_id,))
+        res = cursor.fetchone()
+        if not res:
+            await ctx.send("❌ Tu dois appartenir à un clan pour investir !")
+            return
+        nom_clan = res[0]
+
+        cursor.execute("SELECT niveau_village, points_village FROM clans WHERE nom_clan = ?", (nom_clan,))
+        c_data = cursor.fetchone()
+        niveau, points = c_data[0], c_data[1] + montant
+        
+        palier_requis = niveau * 500
+        message_lvl_up = ""
+        if points >= palier_requis:
+            niveau += 1
+            points = 0
+            message_lvl_up = f"\n\n🎊 **INCROYABLE !** Le village du clan est passé au **Niveau {niveau}** !"
+
+        cursor.execute("UPDATE clans SET niveau_village = ?, points_village = ? WHERE nom_clan = ?", (niveau, points, nom_clan))
+        conn.commit()
+
+        embed = discord.Embed(
+            title="📈 Investissement réussi !",
+            description=f"Tu as investi **{montant} points** dans le village de ton clan (**{nom_clan}**).{message_lvl_up}",
+            color=discord.Color.green()
+        )
+        await ctx.send(embed=embed)
+
+    elif action == "village":
+        cursor.execute("SELECT nom_clan FROM clan_membres WHERE user_id = ?", (user_id,))
+        res = cursor.fetchone()
+        if not res:
+            await ctx.send("❌ Tu ne fais partie d'aucun clan !")
+            return
+        nom_clan = res[0]
+
+        cursor.execute("SELECT niveau_village, points_village FROM clans WHERE nom_clan = ?", (nom_clan,))
+        c_data = cursor.fetchone()
+        niveau, points = c_data[0], c_data[1]
+        palier_requis = niveau * 500
+
+        if niveau == 1:
+            titre_village = "🏕️ Petit Campement de Nomades"
+        elif niveau == 2:
+            titre_village = "🏡 Village Rénové et Fortifié"
+        else:
+            titre_village = "🏰 Grande Forteresse Imprenable"
+
+        embed = discord.Embed(
+            title=f"Village du Clan : {nom_clan}",
+            description=f"Statut actuel : **{titre_village}**\nProgression : **{points} / {palier_requis} pts**",
+            color=discord.Color.purple()
+        )
+        
+        progres = min(int((points / palier_requis) * 10), 10)
+        barre = "█" * progres + "░" * (10 - progres)
+        embed.add_field(name="Barre d'Évolution", value=f"`[{barre}]`", inline=False)
+        embed.set_image(url="https://images.unsplash.com/photo-1518709268805-4e9042af9f23?q=80&w=1000&auto=format&fit=crop")
+        
+        await ctx.send(embed=embed)
+
+
+# --- 3. SYSTÈME D'HABITATION & ÉVOLUTION (Individuel) ---
+@discord_bot.command(name="habitation")
+async def habitation_cmd(ctx, action: str = "voir"):
+    user_id = str(ctx.author.id)
+    u_data = get_or_create_user(user_id)
+    action = action.lower()
+
+    niv = u_data["niv_habitation"]
+    evo = u_data["evo_habitation"]
+    titre = u_data["titre_habitation"]
+    palier = niv * 100
+
+    if action == "voir":
+        embed = discord.Embed(
+            title=f"🏡 Habitation de {ctx.author.name}",
+            description=f"Style actuel : **{titre}**",
+            color=discord.Color.orange()
+        )
+        embed.add_field(name="Niveau", value=str(niv), inline=True)
+        embed.add_field(name="Évolution", value=f"{evo} / {palier} pts", inline=True)
+        
+        progres = min(int((evo / palier) * 10), 10)
+        barre = "█" * progres + "░" * (10 - progres)
+        embed.add_field(name="Progression", value=f"`[{barre}]`", inline=False)
+        
+        await ctx.send(embed=embed)
+
+    elif action == "ameliorer":
+        if evo < palier:
+            await ctx.send(f"❌ Tu n'as pas assez de points d'évolution ! Il te faut **{palier} points** (tu en as {evo}).")
+            return
+        
+        niv += 1
+        evo = 0
+        if niv == 2:
+            titre = "Chambre Rénovée avec Grenier"
+        elif niv == 3:
+            titre = "Base Secrète des Esprits"
+        else:
+            titre = f"Manoir Légendaire (Niv. {niv})"
+
+        cursor.execute("UPDATE users SET niv_habitation = ?, evo_habitation = ?, titre_habitation = ? WHERE user_id = ?", (niv, evo, titre, user_id))
+        conn.commit()
+
+        embed = discord.Embed(
+            title="🎉 Amélioration réussie !",
+            description=f"Ton habitation est passée au **Niveau {niv}** !\nNouveau style : **{titre}**",
+            color=discord.Color.green()
+        )
+        await ctx.send(embed=embed)
+
 
 # Routes Flask
 @app.route('/current-pokemon')
