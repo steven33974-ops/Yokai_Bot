@@ -16,7 +16,7 @@ CORS(app)
 
 @app.route('/')
 def keep_alive():
-    return "Mon bot Pokémon est bien en ligne !"
+    return "Mon bot Yōkai est bien en ligne !"
 
 # --- DICTIONNAIRE DE TRADUCTION ---
 TRADUCTION_POKEMON = {
@@ -60,8 +60,6 @@ cursor.execute('''
         value TEXT
     )
 ''')
-
-# --- TABLES POUR LES CLANS, ÉQUIPES & QUÊTES ---
 cursor.execute('''
     CREATE TABLE IF NOT EXISTS equipes (
         user_id TEXT PRIMARY KEY,
@@ -70,7 +68,6 @@ cursor.execute('''
         yokai3 TEXT
     )
 ''')
-
 cursor.execute('''
     CREATE TABLE IF NOT EXISTS clans (
         nom_clan TEXT PRIMARY KEY,
@@ -79,14 +76,12 @@ cursor.execute('''
         points_village INTEGER DEFAULT 0
     )
 ''')
-
 cursor.execute('''
     CREATE TABLE IF NOT EXISTS clan_membres (
         user_id TEXT PRIMARY KEY,
         nom_clan TEXT
     )
 ''')
-
 cursor.execute('''
     CREATE TABLE IF NOT EXISTS quetes (
         user_id TEXT,
@@ -152,44 +147,32 @@ def get_spawn_interval():
     data = cursor.fetchone()
     return float(data[0]) if data and data[0] else 2.0
 
-# --- VUE INTERACTIVE POUR LA CAPTURE PAR BOUTONS ---
-class CaptureView(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=30)
-
-    @discord.ui.button(label="Pokéball", style=discord.ButtonStyle.danger, emoji="🔴")
-    async def btn_pokeball(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await tenter_capture(interaction, "pokeball")
-
-    @discord.ui.button(label="Superball", style=discord.ButtonStyle.primary, emoji="🔵")
-    async def btn_superball(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await tenter_capture(interaction, "superball")
-
-    @discord.ui.button(label="Hyperball", style=discord.ButtonStyle.secondary, emoji="🟣")
-    async def btn_hyperball(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await tenter_capture(interaction, "hyperball")
-
-    @discord.ui.button(label="Masterball", style=discord.ButtonStyle.success, emoji="🟡")
-    async def btn_masterball(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await tenter_capture(interaction, "masterball")
-
-async def tenter_capture(interaction: discord.Interaction, ball: str):
-    global pokemon_sauvage, derniere_capture_anim
-    await interaction.response.defer(ephemeral=True)
-
+# --- LOGIQUE COMMUNE DE CAPTURE ---
+async def executer_capture(user_id_str, user_display_name, ball, channel_or_interaction, is_interaction=True):
+    global pokemon_sauvage
     if pokemon_sauvage is None:
-        await interaction.followup.send("Ce Pokémon a déjà disparu ou a été capturé !", ephemeral=True)
+        msg = "Ce Pokémon a déjà disparu ou a été capturé !"
+        if is_interaction:
+            await channel_or_interaction.followup.send(msg, ephemeral=True)
+        else:
+            await channel_or_interaction.send(msg)
         return
 
-    user_id_str = str(interaction.user.id)
     user_data = get_or_create_user(user_id_str)
     taux_et_noms = {"pokeball": (70, "Pokéball"), "superball": (85, "Superball"), "hyperball": (95, "Hyperball"), "masterball": (100, "Masterball")}
 
-    if user_data[ball] <= 0:
-        await interaction.followup.send(f"Tu n'as plus de {taux_et_noms[ball][1]} dans ton inventaire !", ephemeral=True)
+    if ball not in taux_et_noms:
+        msg = "Type de Ball inconnu !"
+        if is_interaction: await channel_or_interaction.followup.send(msg, ephemeral=True)
+        else: await channel_or_interaction.send(msg)
         return
 
-    derniere_capture_anim = ball
+    if user_data[ball] <= 0:
+        msg = f"Tu n'as plus de {taux_et_noms[ball][1]} dans ton inventaire !"
+        if is_interaction: await channel_or_interaction.followup.send(msg, ephemeral=True)
+        else: await channel_or_interaction.send(msg)
+        return
+
     cursor.execute(f"UPDATE users SET {ball} = {ball} - 1 WHERE user_id = ?", (user_id_str,))
     
     if random.randint(1, 100) <= taux_et_noms[ball][0]:
@@ -198,7 +181,6 @@ async def tenter_capture(interaction: discord.Interaction, ball: str):
         cursor.execute("INSERT INTO pokedex (user_id, pokemon_name, is_shiny, level, xp) VALUES (?, ?, ?, 1, 0)", (user_id_str, poke, 1 if shiny else 0))
         cursor.execute("UPDATE users SET money = money + ? WHERE user_id = ?", (200 if shiny else 50, user_id_str))
         
-        # Progression de la quête 'capture'
         cursor.execute("UPDATE quetes SET progression = MIN(objectif, progression + 1), terminee = CASE WHEN progression + 1 >= objectif THEN 1 ELSE 0 END WHERE user_id = ? AND type_quete = 'capture' AND terminee = 0", (user_id_str,))
 
         cursor.execute("SELECT COUNT(*) FROM pokedex WHERE user_id = ?", (user_id_str,))
@@ -212,10 +194,40 @@ async def tenter_capture(interaction: discord.Interaction, ball: str):
             
         cursor.execute("UPDATE users SET badges = ? WHERE user_id = ?", (current_badges, user_id_str))
         conn.commit()
-        await interaction.followup.send(f"🌸 **{interaction.user.display_name}** a capturé avec succès **{poke}** {'✨' if shiny else ''} !")
+        
+        success_msg = f"🌸 **{user_display_name}** a capturé avec succès **{poke}** {'✨' if shiny else ''} !"
+        if is_interaction: await channel_or_interaction.followup.send(success_msg)
+        else: await channel_or_interaction.send(success_msg)
     else:
         conn.commit()
-        await interaction.followup.send(f"💨 {interaction.user.mention} a raté sa capture ! L'esprit s'est échappé...", ephemeral=True)
+        fail_msg = f"💨 {user_display_name} a raté sa capture ! L'esprit s'éechappé..."
+        if is_interaction: await channel_or_interaction.followup.send(fail_msg, ephemeral=True)
+        else: await channel_or_interaction.send(fail_msg)
+
+# --- VUE INTERACTIVE POUR LA CAPTURE ---
+class CaptureView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=30)
+
+    @discord.ui.button(label="Pokéball", style=discord.ButtonStyle.danger, emoji="🔴")
+    async def btn_pokeball(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        await executer_capture(str(interaction.user.id), interaction.user.display_name, "pokeball", interaction, True)
+
+    @discord.ui.button(label="Superball", style=discord.ButtonStyle.primary, emoji="🔵")
+    async def btn_superball(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        await executer_capture(str(interaction.user.id), interaction.user.display_name, "superball", interaction, True)
+
+    @discord.ui.button(label="Hyperball", style=discord.ButtonStyle.secondary, emoji="🟣")
+    async def btn_hyperball(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        await executer_capture(str(interaction.user.id), interaction.user.display_name, "hyperball", interaction, True)
+
+    @discord.ui.button(label="Masterball", style=discord.ButtonStyle.success, emoji="🟡")
+    async def btn_masterball(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        await executer_capture(str(interaction.user.id), interaction.user.display_name, "masterball", interaction, True)
 
 async def apparaitre_pokemon(channel):
     global pokemon_sauvage
@@ -233,11 +245,11 @@ async def apparaitre_pokemon(channel):
 
         if is_shiny:
             titre = "🌸✨ ─── [ ⛩️ SANCTUAIRE SAKURA (SHINY) ⛩️ ] ─── ✨🌸"
-            description = f"Un esprit divin rare est apparu !\n🌸 **{name} Shiny** ✨\n📏 {height}m | ⚖️ {weight}kg | 🔮 {types}\n\n*Clique sur un bouton ci-dessous pour lancer une Ball !*"
+            description = f"Un esprit divin rare est apparu !\n🌸 **{name} Shiny** ✨\n📏 {height}m | ⚖️ {weight}kg | 🔮 {types}\n\n*Utilise `!capture <ball>` ou clique sur les boutons !*"
             couleur = 0xFFB7C5
         else:
             titre = "🌸 ─── [ ⛩️ JARDIN DES SAKURAS ⛩️ ] ─── 🌸"
-            description = f"Un esprit sauvage émerge des cerisiers...\n**{name}**\n📏 {height}m | ⚖️ {weight}kg | 🔮 {types}\n\n*Clique sur un bouton ci-dessous pour tenter la capture !*"
+            description = f"Un esprit sauvage émerge des cerisiers...\n**{name}**\n📏 {height}m | ⚖️ {weight}kg | 🔮 {types}\n\n*Utilise `!capture <ball>` ou clique sur les boutons !*"
             couleur = 0xFFC0CB
 
         pokemon_sauvage = {"name": name, "is_shiny": is_shiny, "image_url": image_url}
@@ -285,7 +297,7 @@ async def on_ready():
 @commands.has_permissions(administrator=True)
 async def adminhelp(ctx):
     embed = discord.Embed(title="⛩️ Grimoire Administrateur ⛩️", color=0xFFB7C5)
-    embed.add_field(name="Configuration", value="`!setchannel` - Définit le salon de spawn\n`!settime <min>` - Règle l'intervalle de temps\n`!pop` - Force l'apparition d'un esprit", inline=False)
+    embed.add_field(name="Configuration", value="`!setchannel` - Définit le salon de spawn\n`!settime <min>` - Règle l'intervalle\n`!pop` - Force l'apparition", inline=False)
     embed.add_field(name="Gestion Joueurs", value="`!addmoney @user <montant>`\n`!removemoney @user <montant>`\n`!givepokemon @user <nom> [True]`\n`!resetplayer @user`", inline=False)
     await ctx.send(embed=embed)
 
@@ -301,12 +313,12 @@ async def setchannel(ctx, channel: discord.TextChannel = None):
 @commands.has_permissions(administrator=True)
 async def settime(ctx, minutes: float):
     if minutes < 0.5:
-        await ctx.send("🌸 L'intervalle doit être d'au moins 0.5 minutes (30 secondes).")
+        await ctx.send("🌸 L'intervalle doit être d'au moins 0.5 minutes.")
         return
     cursor.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('spawn_interval_minutes', ?)", (str(minutes),))
     conn.commit()
     boucle_spawn.change_interval(minutes=minutes)
-    await ctx.send(f"🌸 L'intervalle d'apparition des esprits a été réglé sur **{minutes} minutes** !")
+    await ctx.send(f"🌸 Intervalle réglé sur **{minutes} minutes** !")
 
 @discord_bot.command(name="pop")
 @commands.has_permissions(administrator=True)
@@ -320,7 +332,7 @@ async def addmoney(ctx, member: discord.Member, montant: int):
     get_or_create_user(str(member.id))
     cursor.execute("UPDATE users SET money = money + ? WHERE user_id = ?", (montant, str(member.id)))
     conn.commit()
-    await ctx.send(f"🌸 {montant}$ ont été ajoutés au compte de {member.mention}.")
+    await ctx.send(f"🌸 {montant}$ ajoutés au compte de {member.mention}.")
 
 @discord_bot.command()
 @commands.has_permissions(administrator=True)
@@ -328,7 +340,7 @@ async def removemoney(ctx, member: discord.Member, montant: int):
     get_or_create_user(str(member.id))
     cursor.execute("UPDATE users SET money = MAX(0, money - ?) WHERE user_id = ?", (montant, str(member.id)))
     conn.commit()
-    await ctx.send(f"🌸 {montant}$ ont été retirés du compte de {member.mention}.")
+    await ctx.send(f"🌸 {montant}$ retirés du compte de {member.mention}.")
 
 @discord_bot.command()
 @commands.has_permissions(administrator=True)
@@ -337,13 +349,13 @@ async def givepokemon(ctx, member: discord.Member, nom: str, shiny_flag: bool = 
     poke_nom_api = get_api_name(nom)
     resp = requests.get(f"https://pokeapi.co/api/v2/pokemon/{poke_nom_api}")
     if resp.status_code != 200:
-        await ctx.send("🌸 Esprit introuvable dans le grand registre !")
+        await ctx.send("🌸 Esprit introuvable !")
         return
     data = resp.json()
     vrai_nom = data['name'].capitalize()
     cursor.execute("INSERT INTO pokedex (user_id, pokemon_name, is_shiny, level, xp) VALUES (?, ?, ?, 1, 0)", (str(member.id), vrai_nom, 1 if shiny_flag else 0))
     conn.commit()
-    await ctx.send(f"🌸 L'esprit **{vrai_nom}** {'✨' if shiny_flag else ''} a été confié au clan de {member.mention} !")
+    await ctx.send(f"🌸 L'esprit **{vrai_nom}** {'✨' if shiny_flag else ''} a été offert à {member.mention} !")
 
 @discord_bot.command()
 @commands.has_permissions(administrator=True)
@@ -355,9 +367,13 @@ async def resetplayer(ctx, member: discord.Member):
     cursor.execute("DELETE FROM clan_membres WHERE user_id = ?", (u_id,))
     cursor.execute("DELETE FROM quetes WHERE user_id = ?", (u_id,))
     conn.commit()
-    await ctx.send(f"🌸 Le profil et le clan de {member.mention} ont été réinitialisés par les esprits.")
+    await ctx.send(f"🌸 Le profil de {member.mention} a été réinitialisé.")
 
 # --- COMMANDES JOUEURS ---
+
+@discord_bot.command()
+async def capture(ctx, ball: str = "pokeball"):
+    await executer_capture(str(ctx.author.id), ctx.author.display_name, ball.lower(), ctx, False)
 
 @discord_bot.command()
 async def profil(ctx, member: discord.Member = None):
@@ -371,8 +387,8 @@ async def profil(ctx, member: discord.Member = None):
     embed.add_field(name="💰 Argent", value=f"{u_data['money']}$", inline=True)
     embed.add_field(name="📖 Esprits", value=f"{nb_pokes} (Niveau cumulé: {total_lvl})", inline=True)
     embed.add_field(name="🏠 Habitation", value=f"Niv.{u_data['niv_habitation']} - {u_data['titre_habitation']}", inline=False)
-    embed.add_field(name="🏆 Badges du Clan", value=u_data['badges'], inline=False)
-    embed.add_field(name="📜 Histoire du Personnage", value=u_data['bio'], inline=False)
+    embed.add_field(name="🏆 Badges", value=u_data['badges'], inline=False)
+    embed.add_field(name="📜 Histoire", value=u_data['bio'], inline=False)
     embed.add_field(name="🎒 Inventaire", value=f"🔴 x{u_data['pokeball']} | 🔵 x{u_data['superball']} | 🟣 x{u_data['hyperball']} | 🟡 x{u_data['masterball']}\n🍬 Bonbons: {u_data['bonbon']} | 🧪 Potions: {u_data['potion']}", inline=False)
     await ctx.send(embed=embed)
 
@@ -383,17 +399,16 @@ async def histoire(ctx, *, texte: str = None):
     if not texte:
         u_data = get_or_create_user(u_id)
         embed = discord.Embed(title=f"📜 Histoire de {ctx.author.display_name}", description=u_data['bio'], color=0xFFB7C5)
-        embed.set_footer(text="Pour modifier ton histoire, tape : !histoire <ton texte>")
         await ctx.send(embed=embed)
         return
     if len(texte) > 500:
-        await ctx.send("🌸 Ton histoire est trop longue ! Maximum 500 caractères.")
+        await ctx.send("🌸 Maximum 500 caractères.")
         return
     cursor.execute("UPDATE users SET bio = ? WHERE user_id = ?", (texte, u_id))
     conn.commit()
-    await ctx.send(f"🌸 {ctx.author.mention}, l'histoire de ton personnage a été gravée dans les registres du clan !")
+    await ctx.send(f"🌸 {ctx.author.mention}, ton histoire a été enregistrée !")
 
-# --- SYSTÈME DE PAGINATION POUR LE POKÉDEX ---
+# --- PAGINATION POKÉDEX ---
 class PokedexPaginator(discord.ui.View):
     def __init__(self, pokemons, member_name):
         super().__init__(timeout=180)
@@ -415,27 +430,24 @@ class PokedexPaginator(discord.ui.View):
 
         embed = discord.Embed(
             title=f"🌸 Clan de {self.member_name} (Page {self.current_page + 1}/{self.max_pages + 1})",
-            description="Voici tous les esprits capturés par le dresseur :",
             color=0xFFC0CB
         )
-
         description_lines = []
         for pid, name, shiny, lvl, xp in page_items:
             shiny_emoji = "✨" if shiny else ""
             description_lines.append(f"• **ID {pid}** | **Niv.{lvl}** - {name} {shiny_emoji} *(XP: {xp}/{lvl * 100})*")
 
-        embed.add_field(name="📜 Liste des Esprits", value="\n".join(description_lines), inline=False)
-        embed.set_footer(text=f"Total d'esprits : {len(self.pokemons)}")
+        embed.add_field(name="📜 Esprits", value="\n".join(description_lines), inline=False)
         return embed
 
-    @discord.ui.button(label="◀️ Précédent", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="◀️", style=discord.ButtonStyle.secondary)
     async def prev_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         if self.current_page > 0:
             self.current_page -= 1
             self.update_buttons()
             await interaction.response.edit_message(embed=self.create_embed(), view=self)
 
-    @discord.ui.button(label="Suivant ▶️", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="▶️", style=discord.ButtonStyle.secondary)
     async def next_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         if self.current_page < self.max_pages:
             self.current_page += 1
@@ -448,14 +460,14 @@ async def inv_cmd(ctx, member: discord.Member = None):
     cursor.execute("SELECT id, pokemon_name, is_shiny, level, xp FROM pokedex WHERE user_id = ? ORDER BY id DESC", (str(target.id),))
     pokemons = cursor.fetchall()
     if not pokemons:
-        await ctx.send(f"🌸 {target.mention} n'a aucun esprit dans son clan !")
+        await ctx.send(f"🌸 {target.mention} n'a aucun esprit !")
         return
     view = PokedexPaginator(pokemons, target.display_name)
     await ctx.send(embed=view.create_embed(), view=view)
 
 @discord_bot.command()
 async def shop(ctx):
-    embed = discord.Embed(title="⛩️ Boutique ⛩️", description="Utilise `!buy <article> [quantité]`", color=0xFFB7C5)
+    embed = discord.Embed(title="⛩️ Boutique ⛩️", color=0xFFB7C5)
     embed.add_field(name="Articles", value="pokeball (100$) | superball (300$) | hyperball (600$) | masterball (2500$)\nbonbon (150$) | potion (100$)", inline=False)
     await ctx.send(embed=embed)
 
@@ -509,42 +521,8 @@ async def feed(ctx, pokemon_id: int):
     ctx.invoke(use, objet="bonbon", pokemon_id=pokemon_id)
 
 @discord_bot.command()
-async def duel(ctx, opponent: discord.Member, mise: int = 50):
-    if opponent == ctx.author or opponent.bot:
-        await ctx.send("Tu ne peux pas te battre contre toi-même !")
-        return
-    u1_id = str(ctx.author.id)
-    u2_id = str(opponent.id)
-    u1 = get_or_create_user(u1_id)
-    u2 = get_or_create_user(u2_id)
-    if u1["money"] < mise or u2["money"] < mise:
-        await ctx.send("L'un des joueurs n'a pas assez d'argent pour cette mise !")
-        return
-    cursor.execute("SELECT SUM(level) FROM pokedex WHERE user_id = ?", (u1_id,))
-    score1 = (cursor.fetchone()[0] or 1) + random.randint(1, 20)
-    cursor.execute("SELECT SUM(level) FROM pokedex WHERE user_id = ?", (u2_id,))
-    score2 = (cursor.fetchone()[0] or 1) + random.randint(1, 20)
-
-    if score1 > score2:
-        cursor.execute("UPDATE users SET money = money + ? WHERE user_id = ?", (mise, u1_id))
-        cursor.execute("UPDATE users SET money = money - ? WHERE user_id = ?", (mise, u2_id))
-        # Progression quête duel pour le gagnant
-        cursor.execute("UPDATE quetes SET progression = MIN(objectif, progression + 1), terminee = 1 WHERE user_id = ? AND type_quete = 'duel' AND terminee = 0", (u1_id,))
-        
-        c_badges = u1["badges"]
-        if "⚔️ Maître des Duels" not in c_badges:
-            cursor.execute("UPDATE users SET badges = ? WHERE user_id = ?", (c_badges + " | ⚔️ Maître des Duels", u1_id))
-        conn.commit()
-        await ctx.send(f"⚔️ Duel remporté par {ctx.author.mention} face à {opponent.mention} ! Il remporte {mise}$ !")
-    else:
-        cursor.execute("UPDATE users SET money = money - ? WHERE user_id = ?", (mise, u1_id))
-        cursor.execute("UPDATE users SET money = money + ? WHERE user_id = ?", (mise, u2_id))
-        conn.commit()
-        await ctx.send(f"⚔️ Victoire de {opponent.mention} face à {ctx.author.mention} ! Il remporte {mise}$ !")
-
-@discord_bot.command()
 async def trade(ctx, member: discord.Member, mon_poke_id: int, son_poke_id: int):
-    await ctx.send(f"🤝 Système d'échange en cours de validation entre {ctx.author.mention} and {member.mention}...")
+    await ctx.send(f"🤝 Échange en cours entre {ctx.author.mention} et {member.mention}...")
 
 @discord_bot.command()
 async def daily(ctx):
@@ -568,126 +546,173 @@ async def top(ctx):
     await ctx.send(embed=embed)
 
 
-# =====================================================================
-# --- SYSTÈME DE QUÊTES ---
-# =====================================================================
-
-@discord_bot.command(name="quetes")
-async def quetes_cmd(ctx):
-    user_id = str(ctx.author.id)
-    get_or_create_user(user_id)
-    
-    cursor.execute("SELECT type_quete, objectif, progression, terminee FROM quetes WHERE user_id = ?", (user_id,))
-    quetes = cursor.fetchall()
-    
-    if not quetes:
-        cursor.execute("INSERT OR REPLACE INTO quetes (user_id, type_quete, objectif, progression, terminee) VALUES (?, 'capture', 3, 0, 0)", (user_id,))
-        cursor.execute("INSERT OR REPLACE INTO quetes (user_id, type_quete, objectif, progression, terminee) VALUES (?, 'duel', 1, 0, 0)", (user_id,))
-        cursor.execute("INSERT OR REPLACE INTO quetes (user_id, type_quete, objectif, progression, terminee) VALUES (?, 'investir', 1, 0, 0)", (user_id,))
-        conn.commit()
-        
-        cursor.execute("SELECT type_quete, objectif, progression, terminee FROM quetes WHERE user_id = ?", (user_id,))
-        quetes = cursor.fetchall()
-
-    embed = discord.Embed(
-        title=f"📜 Quêtes de {ctx.author.display_name}",
-        description="Accomplis ces missions pour gagner des récompenses exclusives !",
-        color=0xFFB7C5
-    )
-    
-    noms_quetes = {
-        "capture": "chasser 3 esprits sauvages",
-        "duel": "participer à 1 duel",
-        "investir": "investir dans le village du clan"
-    }
-
-    for q_type, obj, prog, term in quetes:
-        statut = "✅ Terminée" if term else f"En cours ({prog}/{obj})"
-        desc_mission = noms_quetes.get(q_type, q_type)
-        embed.add_field(name=f"🎯 Mission : {desc_mission}", value=f"Statut : **{statut}**", inline=False)
-
-    embed.set_footer(text="Tape !recompense pour réclamer ton dû une fois la quête finie !")
-    await ctx.send(embed=embed)
-
-
-@discord_bot.command(name="recompense")
-async def recompense_cmd(ctx):
-    user_id = str(ctx.author.id)
-    cursor.execute("SELECT type_quete, progression, objectif, terminee FROM quetes WHERE user_id = ? AND terminee = 1", (user_id,))
-    terminees = cursor.fetchall()
-    
-    if not terminees:
-        await ctx.send("🌸 Tu n'as aucune quête terminée en attente de récompense ! Tape `!quetes` pour voir tes missions.")
+# --- COMBATS & DUELS ---
+@discord_bot.command()
+async def duel(ctx, opponent: discord.Member, mise: int = 50):
+    if opponent == ctx.author or opponent.bot:
+        await ctx.send("Duel impossible contre toi-même !")
         return
-        
-    cursor.execute("UPDATE users SET money = money + 300, bonbon = bonbon + 2 WHERE user_id = ?", (user_id,))
-    cursor.execute("DELETE FROM quetes WHERE user_id = ? AND terminee = 1", (user_id,))
-    conn.commit()
-    
-    await ctx.send(f"🎉 Félicitations {ctx.author.mention} ! Tu as récupéré tes récompenses de quêtes : **300$ et 2 Bonbons** !")
+    u1_id = str(ctx.author.id)
+    u2_id = str(opponent.id)
+    u1 = get_or_create_user(u1_id)
+    u2 = get_or_create_user(u2_id)
+    if u1["money"] < mise or u2["money"] < mise:
+        await ctx.send("Fonds insuffisants pour la mise !")
+        return
+    cursor.execute("SELECT SUM(level) FROM pokedex WHERE user_id = ?", (u1_id,))
+    score1 = (cursor.fetchone()[0] or 1) + random.randint(1, 20)
+    cursor.execute("SELECT SUM(level) FROM pokedex WHERE user_id = ?", (u2_id,))
+    score2 = (cursor.fetchone()[0] or 1) + random.randint(1, 20)
+
+    if score1 > score2:
+        cursor.execute("UPDATE users SET money = money + ? WHERE user_id = ?", (mise, u1_id))
+        cursor.execute("UPDATE users SET money = money - ? WHERE user_id = ?", (mise, u2_id))
+        cursor.execute("UPDATE quetes SET progression = MIN(objectif, progression + 1), terminee = 1 WHERE user_id = ? AND type_quete = 'duel' AND terminee = 0", (u1_id,))
+        conn.commit()
+        await ctx.send(f"⚔️ Victoire de {ctx.author.mention} face à {opponent.mention} ! Il remporte {mise}$ !")
+    else:
+        cursor.execute("UPDATE users SET money = money - ? WHERE user_id = ?", (mise, u1_id))
+        cursor.execute("UPDATE users SET money = money + ? WHERE user_id = ?", (mise, u2_id))
+        conn.commit()
+        await ctx.send(f"⚔️ Victoire de {opponent.mention} face à {ctx.author.mention} ! Il remporte {mise}$ !")
+
+@discord_bot.command(name="ia")
+async def ia_cmd(ctx):
+    u_id = str(ctx.author.id)
+    get_or_create_user(u_id)
+    cursor.execute("SELECT SUM(level) FROM pokedex WHERE user_id = ?", (u_id,))
+    mon_score = (cursor.fetchone()[0] or 1) + random.randint(1, 15)
+    ia_score = random.randint(5, 50)
+    if mon_score >= ia_score:
+        cursor.execute("UPDATE users SET money = money + 100 WHERE user_id = ?", (u_id,))
+        conn.commit()
+        await ctx.send(f"🌸 Victoire contre le dresseur virtuel ! Tu gagnes 100$.")
+    else:
+        await ctx.send(f"💥 Défaite face au dresseur virtuel de l'IA...")
+
+@discord_bot.command(name="champion")
+async def champion_cmd(ctx):
+    u_id = str(ctx.author.id)
+    get_or_create_user(u_id)
+    cursor.execute("SELECT SUM(level) FROM pokedex WHERE user_id = ?", (u_id,))
+    mon_score = (cursor.fetchone()[0] or 1) + random.randint(1, 30)
+    boss_score = random.randint(30, 80)
+    if mon_score >= boss_score:
+        cursor.execute("UPDATE users SET money = money + 1000, bonbon = bonbon + 5 WHERE user_id = ?", (u_id,))
+        conn.commit()
+        await ctx.send(f"🏆 INCROYABLE ! {ctx.author.mention} a vaincu le Boss Mewtwo ! Récompense : 1000$ et 5 Bonbons !")
+    else:
+        await ctx.send(f"💥 Le Boss Mewtwo t'a écrasé sans pitié...")
 
 
-# =====================================================================
-# --- ÉQUIPES, CLANS & HABITATION (AVEC BOUTONS INTERACTIFS) ---
-# =====================================================================
-
-# --- MODALE INTERACTIVE POUR L'ÉQUIPE ---
-class EquipeModal(discord.ui.Modal, title="Sceller son Équipe de Yōkai"):
-    yokai1 = discord.ui.TextInput(label="1er Esprit (Nom ou ID)", placeholder="Ex: Pikachu", required=True)
-    yokai2 = discord.ui.TextInput(label="2ème Esprit (Optionnel)", placeholder="Ex: Dracaufeu", required=False)
-    yokai3 = discord.ui.TextInput(label="3ème Esprit (Optionnel)", placeholder="Ex: Mewtwo", required=False)
+# --- ÉQUIPES ---
+class EquipeModal(discord.ui.Modal, title="Sceller son Équipe"):
+    yokai1 = discord.ui.TextInput(label="1er Esprit", placeholder="Ex: Pikachu", required=True)
+    yokai2 = discord.ui.TextInput(label="2ème Esprit", placeholder="Ex: Dracaufeu", required=False)
+    yokai3 = discord.ui.TextInput(label="3ème Esprit", placeholder="Ex: Mewtwo", required=False)
 
     async def on_submit(self, interaction: discord.Interaction):
         user_id = str(interaction.user.id)
-        y1 = self.yokai1.value or "Aucun"
-        y2 = self.yokai2.value or "Aucun"
-        y3 = self.yokai3.value or "Aucun"
-        
-        cursor.execute("INSERT OR REPLACE INTO equipes (user_id, yokai1, yokai2, yokai3) VALUES (?, ?, ?, ?)", (user_id, y1, y2, y3))
+        cursor.execute("INSERT OR REPLACE INTO equipes (user_id, yokai1, yokai2, yokai3) VALUES (?, ?, ?, ?)", 
+                       (user_id, self.yokai1.value or "Aucun", self.yokai2.value or "Aucun", self.yokai3.value or "Aucun"))
         conn.commit()
-        
-        embed = discord.Embed(
-            title="⚔️ Équipe enregistrée avec succès !",
-            description="Voici ta nouvelle composition prête pour les duels :",
-            color=0xFFB7C5
-        )
-        embed.add_field(name="Membres", value=f"1. {y1}\n2. {y2}\n3. {y3}", inline=False)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await interaction.response.send_message("🛡️ Équipe enregistrée avec succès !", ephemeral=True)
 
-# --- VUE AVEC BOUTON POUR OUVRIR LE FORMULAIRE ---
 class EquipeView(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=None)
-
-    @discord.ui.button(label="Modifier / Créer mon équipe", style=discord.ButtonStyle.primary, emoji="🛡️")
-    async def btn_creer_equipe(self, interaction: discord.Interaction, button: discord.ui.Button):
+    @discord.ui.button(label="Modifier mon équipe", style=discord.ButtonStyle.primary)
+    async def btn_eq(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(EquipeModal())
 
 @discord_bot.command(name="equipe")
 async def equipe_cmd(ctx, action: str = "voir", member: discord.Member = None):
-    user_id = str(ctx.author.id)
     action = action.lower()
-
     if action == "creer":
-        embed = discord.Embed(
-            title="⚔️ Gestion de l'Équipe de Yōkai",
-            description="Clique sur le bouton ci-dessous pour ouvrir le formulaire et choisir tes 3 esprits principaux !",
-            color=0xFFB7C5
-        )
-        await ctx.send(embed=embed, view=EquipeView())
-
-    elif action == "voir":
+        await ctx.send("🛡️ Clique ci-dessous pour composer ton équipe :", view=EquipeView())
+    else:
         target = member or ctx.author
         cursor.execute("SELECT yokai1, yokai2, yokai3 FROM equipes WHERE user_id = ?", (str(target.id),))
         row = cursor.fetchone()
         if not row:
-            await ctx.send(f"🌸 {target.mention} n'a pas encore d'équipe enregistrée ! Tape `!equipe creer` pour la configurer.")
+            await ctx.send(f"🌸 Aucune équipe enregistrée. Tape `!equipe creer`.")
             return
         embed = discord.Embed(title=f"🛡️ Équipe de {target.display_name}", color=0xFFC0CB)
-        embed.add_field(name="Composition", value=f"1. {row[0]}\n2. {row[1]}\n3. {row[2]}", inline=False)
+        embed.add_field(name="Membres", value=f"1. {row[0]}\n2. {row[1]}\n3. {row[2]}", inline=False)
         await ctx.send(embed=embed)
 
 
+# --- CLANS & VILLAGE ---
+@discord_bot.command()
+async def clan(ctx, action: str = "infos", *, nom: str = None):
+    u_id = str(ctx.author.id)
+    action = action.lower()
+    
+    if action == "creer" and nom:
+        cursor.execute("SELECT nom_clan FROM clan_membres WHERE user_id = ?", (u_id,))
+        if cursor.fetchone():
+            await ctx.send("Tu fais déjà partie d'un clan !")
+            return
+        cursor.execute("INSERT OR IGNORE INTO clans (nom_clan, leader) VALUES (?, ?)", (nom, u_id))
+        cursor.execute("INSERT OR REPLACE INTO clan_membres (user_id, nom_clan) VALUES (?, ?)", (u_id, nom))
+        conn.commit()
+        await ctx.send(f"⛩️ Le clan **{nom}** a été fondé avec succès !")
+        
+    elif action == "rejoindre" and nom:
+        cursor.execute("SELECT nom_clan FROM clans WHERE nom_clan = ?", (nom,))
+        if not cursor.fetchone():
+            await ctx.send("Ce clan n'existe pas.")
+            return
+        cursor.execute("INSERT OR REPLACE INTO clan_membres (user_id, nom_clan) VALUES (?, ?)", (u_id, nom))
+        conn.commit()
+        await ctx.send(f"⛩️ Tu as rejoint le clan **{nom}** !")
+        
+    elif action == "infos":
+        cursor.execute("SELECT nom_clan FROM clan_membres WHERE user_id = ?", (u_id,))
+        res = cursor.fetchone()
+        if not res:
+            await ctx.send("Tu n'as pas de clan. Utilise `!clan creer <nom>` ou `!clan rejoindre <nom>`.")
+            return
+        c_name = res[0]
+        cursor.execute("SELECT leader, niveau_village, points_village FROM clans WHERE nom_clan = ?", (c_name,))
+        leader, niv, pts = cursor.fetchone()
+        cursor.execute("SELECT COUNT(*) FROM clan_membres WHERE nom_clan = ?", (c_name,))
+        nb_m = cursor.fetchone()[0]
+        await ctx.send(f"⛩️ **Clan {c_name}**\n👑 Leader : <@{leader}>\n👥 Membres : {nb_m}\n🏡 Niveau Village : {niv} (Pts: {pts})")
+
+@discord_bot.command(name="clan_investir")
+async def clan_investir(ctx, montant: int):
+    u_id = str(ctx.author.id)
+    u = get_or_create_user(u_id)
+    if u["money"] < montant:
+        await ctx.send("Fonds insuffisants.")
+        return
+    cursor.execute("SELECT nom_clan FROM clan_membres WHERE user_id = ?", (u_id,))
+    res = cursor.fetchone()
+    if not res:
+        await ctx.send("Tu dois être dans un clan.")
+        return
+    c_name = res[0]
+    cursor.execute("UPDATE users SET money = money - ? WHERE user_id = ?", (montant, u_id))
+    cursor.execute("UPDATE clans SET points_village = points_village + ? WHERE nom_clan = ?", (montant, c_name))
+    
+    # Progression quête 'investir'
+    cursor.execute("UPDATE quetes SET progression = MIN(objectif, progression + 1), terminee = CASE WHEN progression + 1 >= objectif THEN 1 ELSE 0 END WHERE user_id = ? AND type_quete = 'investir' AND terminee = 0", (u_id,))
+    conn.commit()
+    await ctx.send(f"⛩️ Investissement de {montant}$ réussi pour le clan **{c_name}** !")
+
+@discord_bot.command(name="clan_village")
+async def clan_village(ctx):
+    u_id = str(ctx.author.id)
+    cursor.execute("SELECT nom_clan FROM clan_membres WHERE user_id = ?", (u_id,))
+    res = cursor.fetchone()
+    if not res:
+        await ctx.send("Tu n'as pas de clan.")
+        return
+    cursor.execute("SELECT niveau_village, points_village FROM clans WHERE nom_clan = ?", (res[0],))
+    niv, pts = cursor.fetchone()
+    await ctx.send(f"🏯 Village du clan **{res[0]}**\n• Niveau : {niv}\n• Points de prospérité : {pts}")
+
+
+# --- HABITATION ---
 @discord_bot.command(name="habitation")
 async def habitation_cmd(ctx, action: str = "voir"):
     user_id = str(ctx.author.id)
@@ -696,47 +721,69 @@ async def habitation_cmd(ctx, action: str = "voir"):
 
     if action == "voir":
         embed = discord.Embed(
-            title=f"⛩️ Demeure de {ctx.author.display_name} ⛩️",
-            description=f"**Niveau actuel :** {u_data['niv_habitation']}\n**Titre :** {u_data['titre_habitation']}\n\nC'est ici que votre vie privée de dresseur prend tout son sens. Témoin de votre standing et de votre prospérité.",
+            title=f"⛩️ Demeure de {ctx.author.display_name}",
+            description=f"**Niveau :** {u_data['niv_habitation']}\n**Titre :** {u_data['titre_habitation']}",
             color=0xFFB7C5
         )
-        embed.set_footer(text="Tape !habitation ameliorer pour faire progresser ta demeure !")
         await ctx.send(embed=embed)
 
     elif action == "ameliorer":
         niveau_actuel = u_data["niv_habitation"]
-        
-        # Définition des coûts d'amélioration et des titres selon le niveau
         paliers = {
             1: {"cout": 500, "titre": "Maison de campagne traditionnelle"},
             2: {"cout": 1500, "titre": "Domaine seigneurial des cerisiers"},
             3: {"cout": 4000, "titre": "Palais impérial des esprits"},
             4: {"cout": 10000, "titre": "Sanctuaire céleste légendaire"}
         }
-
         if niveau_actuel >= 4:
-            await ctx.send("🌸 Ta demeure a déjà atteint son niveau maximum et frôle la divinité !")
+            await ctx.send("🌸 Habitation déjà au niveau maximum !")
             return
-
-        infos_palier = paliers[niveau_actuel]
-        cout = infos_palier["cout"]
-        nouveau_titre = infos_palier["titre"]
-
+        cout = paliers[niveau_actuel]["cout"]
+        nouveau_titre = paliers[niveau_actuel]["titre"]
         if u_data["money"] < cout:
-            await ctx.send(f"🌸 Fonds insuffisants ! Il te faut **{cout}$** pour améliorer ton habitation (Tu as {u_data['money']}$).")
+            await ctx.send(f"🌸 Il te faut **{cout}$** pour améliorer ton habitation.")
             return
 
-        nouveau_niveau = niveau_actuel + 1
-        cursor.execute("UPDATE users SET money = money - ?, niv_habitation = ?, titre_habitation = ? WHERE user_id = ?", (cout, nouveau_niveau, nouveau_titre, user_id))
-        
-        # Progression éventuelle de la quête 'investir'
-        cursor.execute("UPDATE quetes SET progression = MIN(objectif, progression + 1), terminee = CASE WHEN progression + 1 >= objectif THEN 1 ELSE 0 END WHERE user_id = ? AND type_quete = 'investir' AND terminee = 0", (user_id,))
+        cursor.execute("UPDATE users SET money = money - ?, niv_habitation = ?, titre_habitation = ? WHERE user_id = ?", (cout, niveau_actuel + 1, nouveau_titre, user_id))
         conn.commit()
+        await ctx.send(f"⛩️ Ton habitation passe au **Niveau {niveau_actuel + 1}** ({nouveau_titre}) !")
 
-        await ctx.send(f"⛩️ Félicitations {ctx.author.mention} ! Tu as investi **{cout}$**. Ta demeure est passée au **Niveau {nouveau_niveau}** et porte désormais le titre : **{nouveau_titre}** !")
+
+# --- QUÊTES ---
+@discord_bot.command(name="quetes")
+async def quetes_cmd(ctx):
+    user_id = str(ctx.author.id)
+    get_or_create_user(user_id)
+    cursor.execute("SELECT type_quete, objectif, progression, terminee FROM quetes WHERE user_id = ?", (user_id,))
+    quetes = cursor.fetchall()
+    if not quetes:
+        cursor.execute("INSERT OR REPLACE INTO quetes (user_id, type_quete, objectif, progression, terminee) VALUES (?, 'capture', 3, 0, 0)", (user_id,))
+        cursor.execute("INSERT OR REPLACE INTO quetes (user_id, type_quete, objectif, progression, terminee) VALUES (?, 'duel', 1, 0, 0)", (user_id,))
+        cursor.execute("INSERT OR REPLACE INTO quetes (user_id, type_quete, objectif, progression, terminee) VALUES (?, 'investir', 1, 0, 0)", (user_id,))
+        conn.commit()
+        cursor.execute("SELECT type_quete, objectif, progression, terminee FROM quetes WHERE user_id = ?", (user_id,))
+        quetes = cursor.fetchall()
+
+    embed = discord.Embed(title=f"📜 Quêtes de {ctx.author.display_name}", color=0xFFB7C5)
+    for q_type, obj, prog, term in quetes:
+        statut = "✅ Terminée" if term else f"En cours ({prog}/{obj})"
+        embed.add_field(name=f"Mission : {q_type}", value=f"Statut : **{statut}**", inline=False)
+    await ctx.send(embed=embed)
+
+@discord_bot.command(name="recompense")
+async def recompense_cmd(ctx):
+    user_id = str(ctx.author.id)
+    cursor.execute("SELECT type_quete FROM quetes WHERE user_id = ? AND terminee = 1", (user_id,))
+    if not cursor.fetchall():
+        await ctx.send("🌸 Aucune quête terminée en attente de récompense.")
+        return
+    cursor.execute("UPDATE users SET money = money + 300, bonbon = bonbon + 2 WHERE user_id = ?", (user_id,))
+    cursor.execute("DELETE FROM quetes WHERE user_id = ? AND terminee = 1", (user_id,))
+    conn.commit()
+    await ctx.send(f"🎉 Récompenses récupérées : **300$ et 2 Bonbons** !")
 
 
-# --- LANCEMENT COMBINÉ FLASK ET DISCORD ---
+# --- LANCEMENT COMBINÉ ---
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
@@ -750,4 +797,4 @@ if __name__ == "__main__":
     if TOKEN:
         discord_bot.run(TOKEN)
     else:
-        print("Erreur : Le token Discord (DISCORD_TOKEN) n'est pas configuré dans les variables d'environnement de Render.")
+        print("Erreur : Le token Discord (DISCORD_TOKEN) n'est pas configuré.")
