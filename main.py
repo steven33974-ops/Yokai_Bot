@@ -228,13 +228,26 @@ async def setchannel(ctx, channel: discord.TextChannel = None):
     conn.commit()
     await ctx.send(f"🌸 Salon de spawn défini sur {target.mention} !")
 
+@discord_bot.command()
+@commands.has_permissions(administrator=True)
+async def settime(ctx, minutes: float):
+    """Définit l'intervalle de temps (en minutes) entre chaque apparition de Pokémon"""
+    if minutes < 0.5:
+        await ctx.send("🌸 L'intervalle doit être d'au moins 0.5 minutes (30 secondes).")
+        return
+        
+    cursor.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('spawn_interval_minutes', ?)", (str(minutes),))
+    conn.commit()
+    boucle_spawn.change_interval(minutes=minutes)
+    await ctx.send(f"🌸 L'intervalle d'apparition des esprits a été réglé sur **{minutes} minutes** !")
+
 @discord_bot.command(name="pop")
 @commands.has_permissions(administrator=True)
 async def pop_cmd(ctx):
     await apparaitre_pokemon(ctx.channel)
     await ctx.send("🌸 [ADMIN] Apparition forcée !")
 
-# --- COMMANDES JOUEURS & NOUVELLES FONCTIONNALITÉS ---
+# --- COMMANDES JOUEURS & FONCTIONNALITÉS ---
 
 @discord_bot.command()
 async def profil(ctx, member: discord.Member = None):
@@ -429,7 +442,6 @@ async def duel(ctx, opponent: discord.Member, mise: int = 50):
 
 @discord_bot.command()
 async def trade(ctx, member: discord.Member, mon_poke_id: int, son_poke_id: int):
-    # Échange simplifié entre deux joueurs
     await ctx.send(f"🤝 Système d'échange en cours de validation entre {ctx.author.mention} et {member.mention}...")
 
 @discord_bot.command()
