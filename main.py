@@ -18,7 +18,6 @@ def keep_alive():
     return "Mon bot Pokémon est bien en ligne !"
 
 # --- DICTIONNAIRE DE TRADUCTION FRANÇAIS -> ANGLAIS ---
-# Permet de lier les noms français des Pokémon vers l'API officielle
 TRADUCTION_POKEMON = {
     "dracaufeu": "charizard",
     "reptincel": "charmeleon",
@@ -35,7 +34,6 @@ TRADUCTION_POKEMON = {
     "minidraco": "dratini",
     "mewtwo": "mewtwo",
     "mew": "mew",
-    # Ajoutez d'autres traductions si besoin au format "francais": "english"
 }
 
 def get_api_name(nom_francais):
@@ -502,4 +500,5 @@ if __name__ == '__main__':
     t_flask = threading.Thread(target=run_flask)
     t_flask.start()
 
+    # Lancement sécurisé du bot Discord via la variable d'environnement DISCORD_TOKEN
     discord_bot.run(os.getenv('DISCORD_TOKEN'))
