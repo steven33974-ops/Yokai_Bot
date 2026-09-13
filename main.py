@@ -697,24 +697,55 @@ async def habitation_cmd(ctx, action: str = "voir"):
     if action == "voir":
         embed = discord.Embed(
             title=f"⛩️ Demeure de {ctx.author.display_name} ⛩️",
-            description="C'est ici que votre vie privée de dresseur prend tout son sens. Suivez l'évolution de votre demeure personnelle, témoin de votre standing et de votre prospérité",
+            description=f"**Niveau actuel :** {u_data['niv_habitation']}\n**Titre :** {u_data['titre_habitation']}\n\nC'est ici que votre vie privée de dresseur prend tout son sens. Témoin de votre standing et de votre prospérité.",
             color=0xFFB7C5
         )
+        embed.set_footer(text="Tape !habitation ameliorer pour faire progresser ta demeure !")
         await ctx.send(embed=embed)
+
+    elif action == "ameliorer":
+        niveau_actuel = u_data["niv_habitation"]
+        
+        # Définition des coûts d'amélioration et des titres selon le niveau
+        paliers = {
+            1: {"cout": 500, "titre": "Maison de campagne traditionnelle"},
+            2: {"cout": 1500, "titre": "Domaine seigneurial des cerisiers"},
+            3: {"cout": 4000, "titre": "Palais impérial des esprits"},
+            4: {"cout": 10000, "titre": "Sanctuaire céleste légendaire"}
+        }
+
+        if niveau_actuel >= 4:
+            await ctx.send("🌸 Ta demeure a déjà atteint son niveau maximum et frôle la divinité !")
+            return
+
+        infos_palier = paliers[niveau_actuel]
+        cout = infos_palier["cout"]
+        nouveau_titre = infos_palier["titre"]
+
+        if u_data["money"] < cout:
+            await ctx.send(f"🌸 Fonds insuffisants ! Il te faut **{cout}$** pour améliorer ton habitation (Tu as {u_data['money']}$).")
+            return
+
+        nouveau_niveau = niveau_actuel + 1
+        cursor.execute("UPDATE users SET money = money - ?, niv_habitation = ?, titre_habitation = ? WHERE user_id = ?", (cout, nouveau_niveau, nouveau_titre, user_id))
+        
+        # Progression éventuelle de la quête 'investir'
+        cursor.execute("UPDATE quetes SET progression = MIN(objectif, progression + 1), terminee = CASE WHEN progression + 1 >= objectif THEN 1 ELSE 0 END WHERE user_id = ? AND type_quete = 'investir' AND terminee = 0", (user_id,))
+        conn.commit()
+
+        await ctx.send(f"⛩️ Félicitations {ctx.author.mention} ! Tu as investi **{cout}$**. Ta demeure est passée au **Niveau {nouveau_niveau}** et porte désormais le titre : **{nouveau_titre}** !")
+
 
 # --- LANCEMENT COMBINÉ FLASK ET DISCORD ---
 def run_flask():
-    # Render fournit dynamiquement un port via os.environ.get("PORT")
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
 
 if __name__ == "__main__":
-    # Lancement de Flask dans un thread séparé pour qu'il réponde au serveur web de Render
     flask_thread = threading.Thread(target=run_flask)
     flask_thread.daemon = True
     flask_thread.start()
 
-    # Démarrage du bot Discord
     TOKEN = os.environ.get("DISCORD_TOKEN")
     if TOKEN:
         discord_bot.run(TOKEN)
