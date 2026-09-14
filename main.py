@@ -210,43 +210,45 @@ async def executer_capture(user_id_str, user_display_name, ball, channel_or_inte
         cursor.execute("INSERT INTO pokedex (user_id, pokemon_name, is_shiny, level, xp) VALUES (?, ?, ?, 1, 0)", (user_id_str, poke, 1 if shiny else 0))
         cursor.execute("UPDATE users SET money = money + ? WHERE user_id = ?", (200 if shiny else 50, user_id_str))
         
-       if random.randint(1, 100) <= taux_et_noms[ball][0]:
-  poke, shiny = pokemon_sauvage["name"], pokemon_sauvage["is_shiny"]
-  pokemon_sauvage = None
-  cursor.execute(
-      "INSERT INTO pokedex (user_id, pokemon_name, is_shiny, level, xp) VALUES"
-      " (?, ?, ?, 1, 0)",
-      (user_id_str, poke, 1 if shiny else 0),
-  )
-  cursor.execute(
-      "UPDATE users SET money = money + ? WHERE user_id = ?",
-      (200 if shiny else 50, user_id_str),
-  )
-
-  cursor.execute(
-      "SELECT objectif, progression, recompense FROM quetes WHERE user_id = ? AND"
-      " type_quete = 'capture' AND terminee = 0",
-      (user_id_str,),
-  )
-  quete_en_cours = cursor.fetchone()
-
-  if quete_en_cours:
-    obj, prog, recomp = quete_en_cours
-
-    cursor.execute(
-        "UPDATE quetes SET progression = MIN(objectif, progression + 1),"
-        " terminee = CASE WHEN progression + 1 >= objectif THEN 1 ELSE 0 END"
-        " WHERE user_id = ? AND type_quete = 'capture' AND terminee = 0",
-        (user_id_str,),
-    )
-
-    if prog + 1 >= obj:
+      if random.randint(1, 100) <= taux_et_noms[ball][0]:
+      poke, shiny = pokemon_sauvage["name"], pokemon_sauvage["is_shiny"]
+      pokemon_sauvage = None
+      cursor.execute(
+          "INSERT INTO pokedex (user_id, pokemon_name, is_shiny, level, xp)"
+          " VALUES (?, ?, ?, 1, 0)",
+          (user_id_str, poke, 1 if shiny else 0),
+      )
       cursor.execute(
           "UPDATE users SET money = money + ? WHERE user_id = ?",
-          (recomp, user_id_str),
+          (200 if shiny else 50, user_id_str),
       )
 
-  conn.commit()
+      cursor.execute(
+          "SELECT objectif, progression, recompense FROM quetes WHERE user_id"
+          " = ? AND type_quete = 'capture' AND terminee = 0",
+          (user_id_str,),
+      )
+      quete_en_cours = cursor.fetchone()
+
+      if quete_en_cours:
+        obj, prog, recomp = quete_en_cours
+
+        cursor.execute(
+            "UPDATE quetes SET progression = MIN(objectif, progression + 1),"
+            " terminee = CASE WHEN progression + 1 >= objectif THEN 1 ELSE 0"
+            " END WHERE user_id = ? AND type_quete = 'capture' AND terminee ="
+            " 0",
+            (user_id_str,),
+        )
+
+        if prog + 1 >= obj:
+          cursor.execute(
+              "UPDATE users SET money = money + ? WHERE user_id = ?",
+              (recomp, user_id_str),
+          )
+
+      conn.commit()
+          
   # --- C'EST ICI QU'IL FAUT METTRE LE NOUVEAU CODE ---
   cursor.execute(
       "SELECT objectif, progression, recompense FROM quetes WHERE user_id = ? AND"
