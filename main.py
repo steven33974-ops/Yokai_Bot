@@ -93,6 +93,7 @@ cursor.execute('''
         objectif INTEGER,
         progression INTEGER DEFAULT 0,
         terminee INTEGER DEFAULT 0,
+        recompense INTEGER DEFAULT 1000,
         PRIMARY KEY (user_id, type_quete, difficulte)
     )
 ''')
@@ -209,7 +210,44 @@ async def executer_capture(user_id_str, user_display_name, ball, channel_or_inte
         cursor.execute("INSERT INTO pokedex (user_id, pokemon_name, is_shiny, level, xp) VALUES (?, ?, ?, 1, 0)", (user_id_str, poke, 1 if shiny else 0))
         cursor.execute("UPDATE users SET money = money + ? WHERE user_id = ?", (200 if shiny else 50, user_id_str))
         
-        cursor.execute("UPDATE quetes SET progression = MIN(objectif, progression + 1), terminee = CASE WHEN progression + 1 >= objectif THEN 1 ELSE 0 END WHERE user_id = ? AND type_quete = 'capture' AND terminee = 0", (user_id_str,))
+        if random.randint(1, 100) <= taux_et_noms[ball][0]:
+  poke, shiny = pokemon_sauvage["name"], pokemon_sauvage["is_shiny"]
+  pokemon_sauvage = None
+  cursor.execute(
+      "INSERT INTO pokedex (user_id, pokemon_name, is_shiny, level, xp) VALUES"
+      " (?, ?, ?, 1, 0)",
+      (user_id_str, poke, 1 if shiny else 0),
+  )
+  cursor.execute(
+      "UPDATE users SET money = money + ? WHERE user_id = ?",
+      (200 if shiny else 50, user_id_str),
+  )
+
+  # --- C'EST ICI QU'IL FAUT METTRE LE NOUVEAU CODE ---
+  cursor.execute(
+      "SELECT objectif, progression, recompense FROM quetes WHERE user_id = ? AND"
+      " type_quete = 'capture' AND terminee = 0",
+      (user_id_str,),
+  )
+  quete_en_cours = cursor.fetchone()
+
+  if quete_en_cours:
+    obj, prog, recomp = quete_en_cours
+
+    cursor.execute(
+        "UPDATE quetes SET progression = MIN(objectif, progression + 1),"
+        " terminee = CASE WHEN progression + 1 >= objectif THEN 1 ELSE 0 END"
+        " WHERE user_id = ? AND type_quete = 'capture' AND terminee = 0",
+        (user_id_str,),
+    )
+
+    if prog + 1 >= obj:
+      cursor.execute(
+          "UPDATE users SET money = money + ? WHERE user_id = ?",
+          (recomp, user_id_str),
+      )
+
+  conn.commit()
 
         cursor.execute("SELECT COUNT(*) FROM pokedex WHERE user_id = ?", (user_id_str,))
         total_captures = cursor.fetchone()[0]
@@ -883,27 +921,28 @@ async def prendre_quete(ctx, difficulte: str = "facile"):
     )
     return
 
-  cursor.execute(
-      "INSERT OR REPLACE INTO quetes (user_id, type_quete, difficulte, objectif,"
-      " progression, terminee) VALUES (?, 'capture', ?, ?, 0, 0)",
-      (u_id, diff, objectif),
-  )
-  conn.commit()
+  # Enregistrement de la quête avec la bonne récompense dans la base de données
+    cursor.execute(
+        "INSERT OR REPLACE INTO quetes (user_id, type_quete, difficulte, objectif,"
+        " progression, terminee, recompense) VALUES (?, 'capture', ?, ?, 0, 0,"
+        " ?)",
+        (u_id, diff, objectif, recompense),
+    )
+    conn.commit()
 
-  # Création du bel embed avec le cadre rose
-  embed = discord.Embed(
-      title="📜 Nouvelle mission acceptée !",
-      description=(
-          f"👤 {ctx.author.mention} s'est lancé dans un défi **{diff}** :\n🎯"
-          f" **Objectif :** Capturer {objectif} esprits.\n💰 **Récompense :**"
-          f" {recompense}$ !"
-      ),
-      color=0xFFB7C5,
-  )
-  embed.set_footer(text="Utilise !quetes pour suivre ta progression.")
+    # Création du bel embed avec le cadre rose
+    embed = discord.Embed(
+        title="📜 Nouvelle mission acceptée !",
+        description=(
+            f"👤 {ctx.author.mention} s'est lancé dans un défi **{diff}** :\n🎯"
+            f" **Objectif :** Capturer {objectif} esprits.\n💰 **Récompense :**"
+            f" {recompense}$ !"
+        ),
+        color=0xFFB7C5,
+    )
+    embed.set_footer(text="Utilise !quetes pour suivre ta progression.")
 
-  await ctx.send(embed=embed)
-
+    await ctx.send(embed=embed)
 # --- PAGINATION POKÉDEX ---
 class PokedexPaginator(discord.ui.View):
     def __init__(self, pokemons, member_name):
