@@ -50,10 +50,6 @@ async def settime(ctx, minutes: float):
     embed = discord.Embed(title="⏳ Intervalle d'Apparition", description=f"Intervalle réglé à **{minutes}** minutes.", color=0xFF69B4)
     await ctx.send(embed=embed)
 
-# ==========================================
-# 🛠️ 1. PANNEAU DE CONTRÔLE ADMIN
-# ==========================================
-
 class CaptureView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=30) # Les boutons expirent après 30 secondes
@@ -73,13 +69,6 @@ class CaptureView(discord.ui.View):
     @discord.ui.button(label="Masterball", style=discord.ButtonStyle.success)
     async def masterball(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_message(f"🟡 {interaction.user.mention} lance la précieuse Masterball !", ephemeral=False)
-
-@bot.command(name="adminhelp")
-@commands.has_permissions(administrator=True)
-async def adminhelp(ctx):
-    embed = discord.Embed(title="🛡️ Grimoire Admin", color=discord.Color.red())
-    embed.add_field(name="Commandes", value="`!setchannel`, `!settime`, `!pop`, `!addmoney`, `!removemoney`, `!resetplayer`, `!givepokemon`", inline=False)
-    await ctx.send(embed=embed)
 
 @bot.command(name="setchannel")
 @commands.has_permissions(administrator=True)
