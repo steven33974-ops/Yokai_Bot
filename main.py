@@ -28,22 +28,10 @@ async def on_ready():
     print(f"Le sanctuaire est éveillé : {bot.user.name} est en ligne ! 🌸")
 
 # ==========================================
-# 🎁 SYSTÈME DE CAPTURE AVEC BOUTONS & ALÉATOIRE
+# 🎁 SYSTÈME DE CAPTURE AVEC BOUTONS & ALÉATOIRE (1025 POKÉMON)
 # ==========================================
 
-# Liste de tous les esprits/Pokémon possibles avec leurs caractéristiques et images officielles
-POKEMONS_SAUVAGES = [
-    {"nom": "Shellos", "taille": "0.3m", "poids": "6.3kg", "type": "🟣 Water", "id": 422},
-    {"nom": "Pikachu", "taille": "0.4m", "poids": "6.0kg", "type": "⚡ Electric", "id": 25},
-    {"nom": "Evoli", "taille": "0.3m", "poids": "6.5kg", "type": "⭐ Normal", "id": 133},
-    {"nom": "Goupix", "taille": "0.6m", "poids": "9.9kg", "type": "🔥 Fire", "id": 37},
-    {"nom": "Bulbizarre", "taille": "0.7m", "poids": "6.9kg", "type": "🌿 Grass/Poison", "id": 1},
-    {"nom": "Salamèche", "taille": "0.6m", "poids": "8.5kg", "type": "🔥 Fire", "id": 4},
-    {"nom": "Carapuce", "taille": "0.5m", "poids": "9.0kg", "type": "🟣 Water", "id": 7},
-    {"nom": "Rondoudou", "taille": "0.5m", "poids": "5.5kg", "type": "🎵 Fairy", "id": 39},
-    {"nom": "Fantominus", "taille": "1.3m", "poids": "0.1kg", "type": "👻 Ghost/Poison", "id": 92},
-    {"nom": "Magicarpe", "taille": "0.9m", "poids": "10.0kg", "type": "🟣 Water", "id": 129}
-]
+POKEMONS_SAUVAGES = list(range(1, 1026))
 
 class CaptureView(discord.ui.View):
     def __init__(self):
@@ -93,21 +81,19 @@ async def settime(ctx, minutes: float):
 @bot.command(name="pop")
 @commands.has_permissions(administrator=True)
 async def pop(ctx):
-    # Choisit un Pokémon totalement au hasard dans la liste
-    poke = random.choice(POKEMONS_SAUVAGES)
+    poke_id = random.choice(POKEMONS_SAUVAGES)
     
     embed = discord.Embed(
         title="🌸 — [ ⛩️ JARDIN DES SAKURAS ⛩️ ] — 🌸",
         description=(
             "Un esprit sauvage émerge des cerisiers...\n"
-            f"**{poke['nom']}**\n"
-            f"📏 {poke['taille']} | ⚖️ {poke['poids']} | {poke['type']}\n\n"
+            f"**Esprit # {poke_id}**\n"
+            f"🔮 Identifiant dimensionnel n°{poke_id}\n\n"
             "_Utilise `!capture <ball>` ou clique sur les boutons !_"
         ),
         color=0xFF69B4
     )
-    # Charge dynamiquement l'image officielle correspondante
-    embed.set_image(url=f"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/{poke['id']}.png")
+    embed.set_image(url=f"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/{poke_id}.png")
     embed.set_footer(text="🏮 Voie des Esprits • Tu as 30 secondes pour le capturer !")
     await ctx.send(embed=embed, view=CaptureView())
 
