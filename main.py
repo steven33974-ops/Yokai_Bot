@@ -362,13 +362,16 @@ async def addmoney(ctx, member: discord.Member, montant: int):
     conn.commit()
     await ctx.send(f"🌸 {montant}$ ajoutés au compte de {member.mention}.")
 
-@discord_bot.command()
+@discord_bot.command(name="removemoney")
 @commands.has_permissions(administrator=True)
 async def removemoney(ctx, member: discord.Member, montant: int):
-    get_or_create_user(str(member.id))
-    cursor.execute("UPDATE users SET money = MAX(0, money - ?) WHERE user_id = ?", (montant, str(member.id)))
-    conn.commit()
-    await ctx.send(f"🌸 {montant}$ retirés du compte de {member.mention}.")
+  get_or_create_user(str(member.id))
+  cursor.execute(
+      "UPDATE users SET money = MAX(0, money - ?) WHERE user_id = ?",
+      (montant, str(member.id)),
+  )
+  conn.commit()
+  await ctx.send(f"🌸 {montant}$ retirés du compte de {member.mention}.")
 
 @discord_bot.command()
 @commands.has_permissions(administrator=True)
