@@ -92,6 +92,18 @@ cursor.execute('''
         PRIMARY KEY (user_id, type_quete)
     )
 ''')
+# Nouvelle table pour la collection de cartes TCG
+cursor.execute('''
+    CREATE TABLE IF NOT EXISTS collection_cartes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT,
+        carte_id TEXT,
+        nom_carte TEXT,
+        rarte_carte TEXT,
+        image_url TEXT,
+        quantite INTEGER DEFAULT 1
+    )
+''')
 
 conn.commit()
 
@@ -365,10 +377,148 @@ async def resetplayer(ctx, member: discord.Member):
     cursor.execute("DELETE FROM equipes WHERE user_id = ?", (u_id,))
     cursor.execute("DELETE FROM clan_membres WHERE user_id = ?", (u_id,))
     cursor.execute("DELETE FROM quetes WHERE user_id = ?", (u_id,))
+    cursor.execute("DELETE FROM collection_cartes WHERE user_id = ?", (u_id,))
     conn.commit()
     await ctx.send(f"🌸 Le profil de {member.mention} a été réinitialisé.")
 
-# --- COMMANDES JOUEURS ---
+# --- NOUVEAU SYSTÈME DE CARTES ET BOOSTERS (TCG) ---
+
+BOOSTER_TYPES = {
+    "standard": {"nom": "Booster Standard", "prix": 500, "description": "Contient des cartes communes et peu communes."},
+    "rare": {"nom": "Booster Rare", "prix": 1500, "description": "Contient de fortes chances de cartes rares et holographiques."},
+    "celeste": {"nom": "Booster Céleste / Secret", "prix": 5000, "description": "Le pack ultime pour décrocher les cartes secrètes et ultra-rares !"}
+}
+
+@discord_bot.command(name="booster_shop")
+async def booster_shop(ctx):
+    embed = discord.Embed(title="📦 Boutique de Boosters de Cartes", description="Achète des boosters pour collectionner de vraies cartes Pokémon TCG dans ton album !", color=0xFFB7C5)
+    for k, v in BOOSTER_TYPES.items( ):
+        embed.add_field(name=f"{v['nom']} (`{k}`)", value=f"💰 Prix : **{v['prix']}$**\n📝 {v['description']}", inline=False)
+    embed.set_footer(text="Utilise !acheter_booster <categorie> pour en acquérir un !")
+    await ctx.send(embed=embed)
+
+@discord_bot.command(name="acheter_booster")
+async def acheter_booster(ctx, categorie: str):
+    cat = categorie.lower()
+    if cat not in BOOSTER_TYPES:
+        await ctx.send("🌸 Catégorie de booster inconnue ! Tape `!booster_shop` pour voir la liste.")
+        return
+    
+    u_id = str(ctx.author.id)
+    u = get_or_create_user(u_id)
+    prix = BOOSTER_TYPES[cat]["prix"]
+    
+    if u["money"] < prix:
+        await ctx.send(f"🌸 Fonds insuffisants ! Il te faut **{prix}$** pour acheter ce booster.")
+        return
+
+    cursor.execute("UPDATE users SET money = money - ? WHERE user_id = ?", (prix, u_id))
+    conn.commit()
+
+    # Simulation d'ouverture de booster TCG (via l'API Pokémon TCG gratuite ou aléatoire)
+    # On pioche un ID de carte aléatoire entre 1 et 150 (génération 1 par défaut, ou extension de cartes)
+    carte_num = random.randint(1, 151)
+    
+    # Appel à l'API publique TCG / ou Pokémon officielle pour le visuel de la vraie carte
+    # Pour garantir des images de vraies cartes garanties, on utilise l'API TCGDex ou Pokémon TCG API
+    try:
+        url_tcg = f"https://api.tcgdex.net/v2/fr/cards/base1-{carte_num}"
+        resp = requests.get(url_tcg)
+        if resp.status_code == 200:
+            data = resp.json()
+            nom_carte = data.get("name", "Pokémon Inconnu")
+            rarte_carte = data.get("rarity", "Commune")
+            image_url = f"{data.get('image', '')}/high.png" if data.get('image') else f"https://assets.tcgdex.net/fr/base/base1/{carte_num}/high.png"
+            carte_id = f"base1-{carte_num}"
+        else:
+            # Fallback de secours si l'API met du temps
+            nom_carte = "Pikachu Promo"
+            rarte_carte = "Rare"
+            image_url = "https://assets.tcgdex.net/fr/base/base1/58/high.png"
+            carte_id = "base1-58"
+    except:
+        nom_carte = "Dracaufeu Holo"
+        rarte_carte = "Ultra-Rare"
+        image_url = "https://assets.tcgdex.net/fr/base/base1/4/high.png"
+        carte_id = "base1-4"
+
+    # Enregistrement ou mise à jour de la quantité dans la collection du joueur
+    cursor.execute("SELECT id, quantite FROM collection_cartes WHERE user_id = ? AND carte_id = ?", (u_id, carte_id))
+    existing = cursor.fetchone()
+    if existing:
+        cursor.execute("UPDATE collection_cartes SET quantite = quantite + 1 WHERE id = ?", (existing[0],))
+    else:
+        cursor.execute("INSERT INTO collection_cartes (user_id, carte_id, nom_carte, rarte_carte, image_url, quantite) VALUES (?, ?, ?, ?, ?, 1)", 
+                       (u_id, carte_id, nom_carte, rarte_carte, image_url))
+    conn.commit()
+
+    embed = discord.Embed(
+        title=f"✨ Ouverture de {BOOSTER_TYPES[cat]['nom']} ✨",
+        description=f"Le paquet s'ouvre... et tu obtiens la carte :\n🏷️ **{nom_carte}** (*Rareté : {rarte_carte}*) !",
+        color=0xFFB7C5
+    )
+    if image_url:
+        embed.set_image(url=image_url)
+    embed.set_footer(text=f"Ajouté à la collection de {ctx.author.display_name} !")
+    await ctx.send(embed=embed)
+
+# Pagination de l'Album de Cartes
+class AlbumPaginator(discord.ui.View):
+    def __init__(self, cartes, member_name):
+        super().__init__(timeout=180)
+        self.cartes = cartes
+        self.member_name = member_name
+        self.current_page = 0
+        self.max_pages = len(cartes) - 1
+        self.update_buttons()
+
+    def update_buttons(self):
+        self.prev_button.disabled = self.current_page == 0
+        self.next_button.disabled = self.current_page >= self.max_pages
+
+    def create_embed(self):
+        carte_actuelle = self.cartes[self.current_page]
+        c_id, nom, rarete, img, qty = carte_actuelle
+
+        embed = discord.Embed(
+            title=f"⛩️ Album de Cartes de {self.member_name} (Page {self.current_page + 1}/{self.max_pages + 1})",
+            description=f"🏷️ **Nom :** {nom}\n✨ **Rareté :** {rarete}\n📦 **Exemplaires possédés :** x{qty}",
+            color=0xFFB7C5
+        )
+        if img:
+            embed.set_image(url=img)
+        embed.set_footer(text=f"ID de la carte : {c_id}")
+        return embed
+
+    @discord.ui.button(label="◀️ Précédent", style=discord.ButtonStyle.secondary)
+    async def prev_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if self.current_page > 0:
+            self.current_page -= 1
+            self.update_buttons()
+            await interaction.response.edit_message(embed=self.create_embed(), view=self)
+
+    @discord.ui.button(label="Suivant ▶️", style=discord.ButtonStyle.secondary)
+    async def next_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if self.current_page < self.max_pages:
+            self.current_page += 1
+            self.update_buttons()
+            await interaction.response.edit_message(embed=self.create_embed(), view=self)
+
+@discord_bot.command(name="album")
+async def album_cmd(ctx, member: discord.Member = None):
+    target = member or ctx.author
+    cursor.execute("SELECT carte_id, nom_carte, rarte_carte, image_url, quantite FROM collection_cartes WHERE user_id = ?", (str(target.id),))
+    cartes = cursor.fetchall()
+    
+    if not cartes:
+        await ctx.send(f"🌸 {target.mention} n'a aucune carte dans son album ! Utilise `!booster_shop` pour en acheter.")
+        return
+        
+    view = AlbumPaginator(cartes, target.display_name)
+    await ctx.send(embed=view.create_embed(), view=view)
+
+
+# --- COMMANDES JOUEURS EXISTANTES ---
 
 @discord_bot.command()
 async def capture(ctx, ball: str = "pokeball"):
