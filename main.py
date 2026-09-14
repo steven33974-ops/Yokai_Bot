@@ -330,14 +330,22 @@ async def habitation_ameliorer(ctx):
 
 
 # ==========================================
-# 🃏 7. ARCHIVES DU TCG (INVENTAIRE & ALBUM INTERACTIF)
+# 🃏 7. ARCHIVES DU TCG (ALBUM 9 CARTES PAR PAGE & LIVRET)
 # ==========================================
 
 import aiohttp
 import random
 
-# Dictionnaire pour stocker les albums de chaque joueur (clé: ID du membre, valeur: liste de ses cartes)
+# Dictionnaire pour stocker les albums de chaque joueur
 INVENTAIRES_JOUEURS = {}
+
+# Liste de référence pour le livret Pokédex
+LISTE_REFERENCE_POKEMON = [
+    "Pikachu", "Dracaufeu", "Tortank", "Florizarre", "Mewtwo", "Ectoplasma", 
+    "Alakazam", "Ronflex", "Léviator", "Lugia", "Ho-Oh", "Tyranocif", 
+    "Mentali", "Noctali", "Rayquaza", "Kyogre", "Groudon", "Lucario", 
+    "Carchacrok", "Amphinobi", "Zekrom", "Reshiram", "Sylveon", "Mimiqui"
+]
 
 class BoosterView(discord.ui.View):
     def __init__(self, cartes, type_booster, auteur):
@@ -360,7 +368,7 @@ class BoosterView(discord.ui.View):
 
         embed = discord.Embed(
             title=f"✨ Ouverture de Booster {self.type_booster.capitalize()} ({self.index + 1}/8) ✨",
-            description=f"Carte **{self.index + 1} sur 8** du paquet :\n🏷️ **{nom}** (*Rareté : {rarete}*)\n\n_Ces cartes ont été enregistrées dans ton album !_",
+            description=f"Carte **{self.index + 1} sur 8** du paquet :\n🏷️ **{nom}** (*Rareté : {rarete}*)\n\n_Ces cartes ont été ajoutées à ton album !_",
             color=0xFFD700
         )
         embed.set_image(url=image_url)
@@ -393,12 +401,14 @@ class AlbumView(discord.ui.View):
         super().__init__(timeout=120)
         self.cartes = cartes
         self.membre = membre
-        self.index = 0
+        self.page = 0
+        self.cartes_par_page = 9
         self.update_buttons()
 
     def update_buttons(self):
-        self.precedent_btn.disabled = self.index == 0
-        self.suivant_btn.disabled = self.index >= len(self.cartes) - 1
+        total_pages = max(1, (len(self.cartes) + self.cartes_par_page - 1) // self.cartes_par_page)
+        self.precedent_btn.disabled = self.page == 0
+        self.suivant_btn.disabled = self.page >= total_pages - 1
 
     def create_embed(self):
         if not self.cartes:
@@ -410,18 +420,31 @@ class AlbumView(discord.ui.View):
             embed.set_image(url="https://images.pokemontcg.io/base1/4_hires.png")
             return embed
 
-        carte = self.cartes[self.index]
-        nom = carte.get("name", "Pokémon")
-        rarete = carte.get("rarity", "Standard")
-        image_url = carte.get("images", {}).get("large") or carte.get("images", {}).get("small") or "https://images.pokemontcg.io/base1/4_hires.png"
+        total_pages = max(1, (len(self.cartes) + self.cartes_par_page - 1) // self.cartes_par_page)
+        debut = self.page * self.cartes_par_page
+        fin = debut + self.cartes_par_page
+        cartes_page = self.cartes[debut:fin]
 
         embed = discord.Embed(
-            title=f"📖 Album de {self.membre.display_name} (Carte ID: {self.index + 1}/{len(self.cartes)})",
-            description=f"🏷️ **{nom}**\n*Rareté : {rarete}*\n\n_Feuillete ton grimoire pour admirer tes cartes de toutes les générations !_0",
+            title=f"📖 Album de {self.membre.display_name} (Page {self.page + 1}/{total_pages})",
+            description="Voici tes cartes disposées par page de 9 (style classeur) :\n",
             color=0xFF69B4
         )
-        embed.set_image(url=image_url)
-        embed.set_footer(text=f"Utilise `!vendre {self.index + 1} <prix>` pour mettre cette carte au marché !")
+
+        # Affichage des 9 cartes sous forme de liste propre dans l'embed
+        description_texte = ""
+        for i, carte in enumerate(cartes_page):
+            index_reel = debut + i + 1
+            nom = carte.get("name", "Pokémon")
+            rarete = carte.get("rarity", "Standard")
+            description_texte += f"`#{index_reel}` **{nom}** *({rarete})*\n"
+
+        embed.add_field(name="🃏 Cartes sur cette page", value=description_texte, inline=False)
+        
+        # Miniature d'illustration représentant la première carte de la page
+        image_url = cartes_page[0].get("images", {}).get("small") or "https://images.pokemontcg.io/base1/4_hires.png"
+        embed.set_thumbnail(url=image_url)
+        embed.set_footer(text=f"Total cartes : {len(self.cartes)} | Utilise !vendre <ID> <prix>")
         return embed
 
     @discord.ui.button(label="◀️ Précédent", style=discord.ButtonStyle.secondary)
@@ -429,8 +452,8 @@ class AlbumView(discord.ui.View):
         if interaction.user != self.membre and not interaction.user.guild_permissions.administrator:
             await interaction.response.send_message("Ce n'est pas ton album !", ephemeral=True)
             return
-        if self.index > 0:
-            self.index -= 1
+        if self.page > 0:
+            self.page -= 1
             self.update_buttons()
             await interaction.response.edit_message(embed=self.create_embed(), view=self)
 
@@ -439,8 +462,9 @@ class AlbumView(discord.ui.View):
         if interaction.user != self.membre and not interaction.user.guild_permissions.administrator:
             await interaction.response.send_message("Ce n'est pas ton album !", ephemeral=True)
             return
-        if self.index < len(self.cartes) - 1:
-            self.index += 1
+        total_pages = (len(self.cartes) + self.cartes_par_page - 1) // self.cartes_par_page
+        if self.page < total_pages - 1:
+            self.page += 1
             self.update_buttons()
             await interaction.response.edit_message(embed=self.create_embed(), view=self)
 
@@ -467,7 +491,6 @@ async def acheter_booster(ctx, type_booster: str):
         await ctx.send("❌ Type de booster invalide ! Choisis entre `standard`, `rare` ou `celeste`.", ephemeral=True)
         return
 
-    # Connexion à l'API pour piocher 8 cartes parmi la collection globale
     async with aiohttp.ClientSession() as session:
         page_aleatoire = random.randint(1, 60)
         async with session.get(f"https://api.pokemontcg.io/v2/cards?page={page_aleatoire}&pageSize=250") as resp:
@@ -491,13 +514,11 @@ async def acheter_booster(ctx, type_booster: str):
             {"name": "Ectoplasma", "rarity": "Rare", "images": {"large": "https://images.pokemontcg.io/base1/5_hires.png"}}
         ]
 
-    # Enregistrement automatique des 8 cartes dans l'album du joueur
     user_id = ctx.author.id
     if user_id not in INVENTAIRES_JOUEURS:
         INVENTAIRES_JOUEURS[user_id] = []
     INVENTAIRES_JOUEURS[user_id].extend(cartes_booster)
 
-    # Affichage du booster interactif
     vue = BoosterView(cartes_booster, type_booster, ctx.author)
     await ctx.send(embed=vue.create_embed(), view=vue)
 
@@ -510,6 +531,30 @@ async def album(ctx, membre: discord.Member = None):
 
     vue = AlbumView(cartes_utilisateur, cible)
     await ctx.send(embed=vue.create_embed(), view=vue)
+
+
+@bot.command(name="pokedex")
+async def pokedex(ctx, membre: discord.Member = None):
+    cible = membre or ctx.author
+    user_id = cible.id
+    cartes_utilisateur = INVENTAIRES_JOUEURS.get(user_id, [])
+
+    noms_possedes = {carte.get("name", "").lower() for carte in cartes_utilisateur}
+
+    description_pokedex = ""
+    for pokemon in LISTE_REFERENCE_POKEMON:
+        if pokemon.lower() in noms_possedes:
+            description_pokedex += f"✅ **{pokemon}**\n"
+        else:
+            description_pokedex += f"❌ ~~{pokemon}~~\n"
+
+    embed = discord.Embed(
+        title=f"📋 Livret Pokédex de {cible.display_name}",
+        description=f"Voici ton livret de suivi pour savoir rapidement quels Pokémon tu possèdes :\n\n{description_pokedex}",
+        color=0x00FF00 if noms_possedes else 0xFF0000
+    )
+    embed.set_footer(text="Ouvre de nouveaux boosters avec !acheter_booster pour cocher les manquants !")
+    await ctx.send(embed=embed)
 
 
 @bot.command(name="afficher")
@@ -526,7 +571,6 @@ async def afficher(ctx, *ids: int):
         description=f"{ctx.author.mention} expose fièrement ses cartes !",
         color=0xFFD700
     )
-    # Prend la première carte demandée pour l'illustration de la vitrine
     if ids and 1 <= ids[0] <= len(cartes_utilisateur):
         carte_vitrine = cartes_utilisateur[ids[0] - 1]
         image_url = carte_vitrine.get("images", {}).get("large") or carte_vitrine.get("images", {}).get("small")
