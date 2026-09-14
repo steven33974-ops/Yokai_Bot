@@ -792,6 +792,106 @@ async def classement_clans(ctx):
 
   await ctx.send(embed=embed)
 
+@discord_bot.command(name="quetes")
+async def voir_quetes(ctx):
+  u_id = str(ctx.author.id)
+
+  # Récupérer les quêtes du joueur avec leur difficulté
+  cursor.execute(
+      "SELECT type_quete, difficulte, objectif, progression, terminee FROM"
+      " quetes WHERE user_id = ?",
+      (u_id,),
+  )
+  quetes = cursor.fetchall()
+
+  if not quetes:
+    await ctx.send(
+        "🌸 Tu n'as aucune quête active pour le moment ! Partage tes aventures"
+        " ou fais des captures pour en obtenir."
+    )
+    return
+
+  embed = discord.Embed(
+      title=f"⛩️ Quêtes et Défis de {ctx.author.display_name} ⛩️",
+      description="Voici l'état d'avancement de tes missions :",
+      color=0xFFB7C5,
+  )
+
+  # Attribuer un émoji selon la difficulté
+  icones_diff = {"Facile": "🟢", "Moyen": "🟠", "Difficile": "🔴", "Légendaire": "✨"}
+
+  for type_quete, difficulte, objectif, progression, terminee in quetes:
+    statut = (
+        "✅ **Terminée !**"
+        if terminee
+        else f"⏳ En cours ({progression}/{objectif})"
+    )
+    nom_mission = (
+        "Chasseur d'Esprits" if type_quete == "capture" else type_quete.capitalize()
+    )
+    icone = icones_diff.get(difficulte, "⚪")
+
+    embed.add_field(
+        name=f"{icone} [{difficulte}] Mission : {nom_mission}",
+        value=statut,
+        inline=False,
+    )
+
+  embed.set_footer(text="Relève les défis les plus durs pour de plus grandes récompenses !")
+  await ctx.send(embed=embed)
+
+# --- COMMANDE PRENDRE QUÊTE ---
+
+
+@discord_bot.command(name="prendre_quete")
+async def prendre_quete(ctx, difficulte: str = "facile"):
+  u_id = str(ctx.author.id)
+  diff = difficulte.capitalize()
+
+  configs_quetes = {
+      "Facile": {"objectif": 3, "recompense": 100},
+      "Moyen": {"objectif": 10, "recompense": 350},
+      "Difficile": {"objectif": 25, "recompense": 1000},
+  }
+
+  if diff not in configs_quetes:
+    await ctx.send(
+        "🌸 Difficulté inconnue ! Choisis entre : `facile`, `moyen` ou"
+        " `difficile`.\nExemple : `!prendre_quete moyen`"
+    )
+    return
+
+  objectif = configs_quetes[diff]["objectif"]
+  recompense = configs_quetes[diff]["recompense"]
+
+  cursor.execute(
+      "SELECT terminee FROM quetes WHERE user_id = ? AND type_quete = 'capture'"
+      " AND difficulte = ?",
+      (u_id, diff),
+  )
+  existante = cursor.fetchone()
+
+  if existante and existante[0] == 0:
+    await ctx.send(
+        f"🌸 Tu as déjà une quête de capture **{diff}** en cours ! Termine-la"
+        " d'abord."
+    )
+    return
+
+  cursor.execute(
+      "INSERT OR REPLACE INTO quetes (user_id, type_quete, difficulte, objectif,"
+      " progression, terminee) VALUES (?, 'capture', ?, ?, 0, 0)",
+      (u_id, diff, objectif),
+  )
+  conn.commit()
+
+  await ctx.send(
+      f"📜 **Nouvelle mission acceptée !**\n👤 {ctx.author.mention} s'est lancé"
+      f" dans un défi **{diff}** :\n🎯 **Objectif :** Capturer {objectif}"
+      f" esprits.\n💰 **Récompense :** {recompense}$ !\n*Utilise `!quetes` pour"
+      " suivre ta progression.*"
+  )
+
 # --- PAGINATION POKÉDEX ---
 class PokedexPaginator(discord.ui.View):
     def __init__(self, pokemons, member_name):
