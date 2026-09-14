@@ -18,6 +18,9 @@ CORS(app)
 def keep_alive():
     return "Mon bot Yōkai est bien en ligne !"
 
+def run_flask():
+    app.run(host='0.0.0.0', port=10000)
+
 # --- DICTIONNAIRE DE TRADUCTION ---
 TRADUCTION_POKEMON = {
     "dracaufeu": "charizard", "reptincel": "charmeleon", "salameche": "charmander",
@@ -104,7 +107,7 @@ cursor.execute('''
         quantite INTEGER DEFAULT 1
     )
 ''')
-# Nouvelle table pour le Marché des cartes entre joueurs
+# Table pour le Marché des cartes entre joueurs
 cursor.execute('''
     CREATE TABLE IF NOT EXISTS marche_cartes (
         vente_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -524,37 +527,82 @@ async def album_cmd(ctx, member: discord.Member = None):
     await ctx.send(embed=view.create_embed(), view=view)
 
 
+# --- NOUVELLE COMMANDE : AFFICHER PLUSIEURS CARTES ---
+@discord_bot.command(name="afficher")
+async def afficher_cartes(ctx, *ids: int):
+    if not ids:
+        await ctx.send("🌸 Tu dois indiquer les ID de tes cartes à afficher ! (Ex: `!afficher 1 3 5`)")
+        return
+    
+    if len(ids) > 5:
+        await ctx.send("🌸 Tu peux afficher un maximum de 5 cartes en même temps !")
+        return
+
+    u_id = str(ctx.author.id)
+    placeholders = ','.join(['?'] * len(ids))
+    query = f"SELECT id, nom_carte, rarte_carte, image_url, quantite FROM collection_cartes WHERE user_id = ? AND id IN ({placeholders})"
+    
+    cursor.execute(query, [u_id] + list(ids))
+    cartes_trouvees = cursor.fetchall()
+
+    if not cartes_trouvees:
+        await ctx.send("🌸 Aucune carte valide trouvée avec ces ID dans ton album.")
+        return
+
+    embed = discord.Embed(
+        title=f"✨ Vitrine de Cartes de {ctx.author.display_name} ✨",
+        description="Voici un aperçu des cartes sélectionnées depuis son album :",
+        color=0xFFB7C5
+    )
+
+    for db_id, nom, rarete, img, qty in cartes_trouvees:
+        embed.add_field(
+            name=f"🏷️ [{db_id}] {nom}",
+            value=f"Rareté : {rarete} | x{qty}",
+            inline=True
+        )
+
+    # S'il y a au moins une image, on affiche la première en grand pour illustrer la vitrine
+    if cartes_trouvees[0][3]:
+        embed.set_image(url=cartes_trouvees[0][3])
+
+    await ctx.send(embed=embed)
+
+
 # --- MARCHÉ DES CARTES ENTRE JOUEURS ---
 
 @discord_bot.command(name="vendre")
-async def vendre_carte(ctx, album_id: int, prix: int):
+async def vendre_carte(ctx, album_id: str, prix: int):
+    if not album_id.isdigit():
+        await ctx.send("🌸 Erreur : L'ID de l'album doit être un **nombre entier** (ex: `1`, `2`, `12`) et non la référence de la carte (`base1-56`). Regarde ton `!album` pour trouver le bon ID !")
+        return
+
+    album_id_int = int(album_id)
+
     if prix <= 0:
         await ctx.send("🌸 Le prix de vente doit être supérieur à 0 $ !")
         return
 
     u_id = str(ctx.author.id)
-    # Vérifier si la carte appartient bien au joueur et combien il en a
-    cursor.execute("SELECT carte_id, nom_carte, rarte_carte, image_url, quantite FROM collection_cartes WHERE id = ? AND user_id = ?", (album_id, u_id))
+    cursor.execute("SELECT carte_id, nom_carte, rarte_carte, image_url, quantite FROM collection_cartes WHERE id = ? AND user_id = ?", (album_id_int, u_id))
     carte = cursor.fetchone()
 
     if not carte:
-        await ctx.send("🌸 Carte introuvable dans ton album ou ID invalide ! Regarde ton `!album` pour trouver l'ID de la carte.")
+        await ctx.send("🌸 Carte introuvable dans ton album avec cet ID ! Regarde bien ton `!album` pour récupérer le bon ID numérique.")
         return
 
     c_id, nom, rarete, img, qty = carte
 
-    # Retirer ou décrémenter de la collection du vendeur
     if qty > 1:
-        cursor.execute("UPDATE collection_cartes SET quantite = quantite - 1 WHERE id = ?", (album_id,))
+        cursor.execute("UPDATE collection_cartes SET quantite = quantite - 1 WHERE id = ?", (album_id_int,))
     else:
-        cursor.execute("DELETE FROM collection_cartes WHERE id = ?", (album_id,))
+        cursor.execute("DELETE FROM collection_cartes WHERE id = ?", (album_id_int,))
 
-    # Ajouter la carte sur le marché
     cursor.execute("INSERT INTO marche_cartes (user_id, carte_id, nom_carte, rarte_carte, image_url, prix) VALUES (?, ?, ?, ?, ?, ?)",
                    (u_id, c_id, nom, rarete, img, prix))
     conn.commit()
 
-    await ctx.send(f"🌸 Ta carte **{nom}** ({rarete}) a été mise en vente sur le marché pour **{prix}$** ! (Vente enregistrée)")
+    await ctx.send(f"🌸 Ta carte **{nom}** ({rarete}) a été mise en vente sur le marché pour **{prix}$** !")
 
 @discord_bot.command(name="marche")
 async def voir_marche(ctx):
@@ -597,14 +645,10 @@ async def acheter_carte(ctx, vente_id: int):
         await ctx.send(f"🌸 Fonds insuffisants ! Il te faut **{prix}$** pour acheter cette carte.")
         return
 
-    # Transférer l'argent (Retirer à l'acheteur, donner au vendeur)
     cursor.execute("UPDATE users SET money = money - ? WHERE user_id = ?", (prix, u_id))
     cursor.execute("UPDATE users SET money = money + ? WHERE user_id = ?", (prix, vendeur_id))
-
-    # Supprimer l'offre du marché
     cursor.execute("DELETE FROM marche_cartes WHERE vente_id = ?", (vente_id,))
 
-    # Ajouter la carte dans la collection de l'acheteur
     cursor.execute("SELECT id, quantite FROM collection_cartes WHERE user_id = ? AND carte_id = ?", (u_id, c_id))
     existing = cursor.fetchone()
     if existing:
@@ -636,7 +680,6 @@ async def retirer_vente(ctx, vente_id: int):
     c_id, nom, rarete, img = vente
     cursor.execute("DELETE FROM marche_cartes WHERE vente_id = ?", (vente_id,))
 
-    # Rendre la carte au joueur dans son album
     cursor.execute("SELECT id, quantite FROM collection_cartes WHERE user_id = ? AND carte_id = ?", (u_id, c_id))
     existing = cursor.fetchone()
     if existing:
@@ -1036,18 +1079,14 @@ async def clan_investir(ctx, montant: int):
     await ctx.send(f"🌸 Investissement de {montant}$ réussi dans le clan {c_name} !")
 
 
-# --- LANCEMENT DU WEB SERVEUR ET DU BOT ---
+# Lancement simultané du serveur Flask et du Bot Discord
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    
-    def run_flask():
-        app.run(host="0.0.0.0", port=port)
-
     t = threading.Thread(target=run_flask)
+    t.daemon = True
     t.start()
 
     TOKEN = os.getenv("DISCORD_TOKEN")
     if TOKEN:
         discord_bot.run(TOKEN)
     else:
-        print("Erreur : Aucun token Discord trouvé !")
+        print("Erreur : Aucun token Discord configuré dans l'environnement !")
