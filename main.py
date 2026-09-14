@@ -851,9 +851,9 @@ async def prendre_quete(ctx, difficulte: str = "facile"):
   diff = difficulte.capitalize()
 
   configs_quetes = {
-      "Facile": {"objectif": 3, "recompense": 100},
-      "Moyen": {"objectif": 10, "recompense": 350},
-      "Difficile": {"objectif": 25, "recompense": 1000},
+      "Facile": {"objectif": 3, "recompense": 1000},
+      "Moyen": {"objectif": 10, "recompense": 3500},
+      "Difficile": {"objectif": 25, "recompense": 10000},
   }
 
   if diff not in configs_quetes:
