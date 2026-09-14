@@ -50,11 +50,68 @@ async def settime(ctx, minutes: float):
     embed = discord.Embed(title="⏳ Intervalle d'Apparition", description=f"Intervalle réglé à **{minutes}** minutes.", color=0xFF69B4)
     await ctx.send(embed=embed)
 
+# ==========================================
+# 🛠️ 1. PANNEAU DE CONTRÔLE ADMIN
+# ==========================================
+
+class CaptureView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=30) # Les boutons expirent après 30 secondes
+
+    @discord.ui.button(label="Pokéball", style=discord.ButtonStyle.danger)
+    async def pokeball(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_message(f"🔴 {interaction.user.mention} lance une Pokéball !", ephemeral=False)
+
+    @discord.ui.button(label="Superball", style=discord.ButtonStyle.primary)
+    async def superball(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_message(f"🔵 {interaction.user.mention} lance une Superball !", ephemeral=False)
+
+    @discord.ui.button(label="Hyperball", style=discord.ButtonStyle.secondary)
+    async def hyperball(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_message(f"🟣 {interaction.user.mention} lance une Hyperball !", ephemeral=False)
+
+    @discord.ui.button(label="Masterball", style=discord.ButtonStyle.success)
+    async def masterball(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_message(f"🟡 {interaction.user.mention} lance la précieuse Masterball !", ephemeral=False)
+
+@bot.command(name="adminhelp")
+@commands.has_permissions(administrator=True)
+async def adminhelp(ctx):
+    embed = discord.Embed(title="🛡️ Grimoire Admin", color=discord.Color.red())
+    embed.add_field(name="Commandes", value="`!setchannel`, `!settime`, `!pop`, `!addmoney`, `!removemoney`, `!resetplayer`, `!givepokemon`", inline=False)
+    await ctx.send(embed=embed)
+
+@bot.command(name="setchannel")
+@commands.has_permissions(administrator=True)
+async def setchannel(ctx, salon: discord.TextChannel = None):
+    salon_cible = salon or ctx.channel
+    embed = discord.Embed(title="⛩️ Configuration du Salon", description=f"Le salon {salon_cible.mention} est désormais le sanctuaire officiel des esprits.", color=0xFF69B4)
+    await ctx.send(embed=embed)
+
+@bot.command(name="settime")
+@commands.has_permissions(administrator=True)
+async def settime(ctx, minutes: float):
+    embed = discord.Embed(title="⏳ Intervalle d'Apparition", description=f"Intervalle réglé à **{minutes}** minutes.", color=0xFF69B4)
+    await ctx.send(embed=embed)
+
 @bot.command(name="pop")
 @commands.has_permissions(administrator=True)
 async def pop(ctx):
-    embed = discord.Embed(title="✨ Distorsion Dimensionnelle", description="Une distorsion dimensionnelle provoque l'apparition immédiate d'un esprit sauvage !", color=0xFF69B4)
-    await ctx.send(embed=embed)
+    embed = discord.Embed(
+        title="🌸 — [ ⛩️ JARDIN DES SAKURAS ⛩️ ] — 🌸",
+        description=(
+            "Un esprit sauvage émerge des cerisiers...\n"
+            "**Shellos**\n"
+            "📏 0.3m | ⚖️ 6.3kg | 🟣 Water\n\n"
+            "_Utilise `!capture <ball>` ou clique sur les boutons !_"
+        ),
+        color=0xFF69B4
+    )
+    embed.set_image(url="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/422.png")
+    embed.set_footer(text="🏮 Voie des Esprits • Tu as 30 secondes pour le capturer !")
+    await ctx.send(embed=embed, view=CaptureView())
+
+# ... (le reste de tes commandes suit en dessous)
 
 @bot.command(name="addmoney")
 @commands.has_permissions(administrator=True)
