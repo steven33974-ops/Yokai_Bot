@@ -1,5 +1,6 @@
 import os
 import threading
+import random
 from flask import Flask
 import discord
 from discord.ext import commands
@@ -27,6 +28,45 @@ async def on_ready():
     print(f"Le sanctuaire est éveillé : {bot.user.name} est en ligne ! 🌸")
 
 # ==========================================
+# 🎁 SYSTÈME DE CAPTURE AVEC BOUTONS & ALÉATOIRE
+# ==========================================
+
+# Liste de tous les esprits/Pokémon possibles avec leurs caractéristiques et images officielles
+POKEMONS_SAUVAGES = [
+    {"nom": "Shellos", "taille": "0.3m", "poids": "6.3kg", "type": "🟣 Water", "id": 422},
+    {"nom": "Pikachu", "taille": "0.4m", "poids": "6.0kg", "type": "⚡ Electric", "id": 25},
+    {"nom": "Evoli", "taille": "0.3m", "poids": "6.5kg", "type": "⭐ Normal", "id": 133},
+    {"nom": "Goupix", "taille": "0.6m", "poids": "9.9kg", "type": "🔥 Fire", "id": 37},
+    {"nom": "Bulbizarre", "taille": "0.7m", "poids": "6.9kg", "type": "🌿 Grass/Poison", "id": 1},
+    {"nom": "Salamèche", "taille": "0.6m", "poids": "8.5kg", "type": "🔥 Fire", "id": 4},
+    {"nom": "Carapuce", "taille": "0.5m", "poids": "9.0kg", "type": "🟣 Water", "id": 7},
+    {"nom": "Rondoudou", "taille": "0.5m", "poids": "5.5kg", "type": "🎵 Fairy", "id": 39},
+    {"nom": "Fantominus", "taille": "1.3m", "poids": "0.1kg", "type": "👻 Ghost/Poison", "id": 92},
+    {"nom": "Magicarpe", "taille": "0.9m", "poids": "10.0kg", "type": "🟣 Water", "id": 129}
+]
+
+class CaptureView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=30)
+
+    @discord.ui.button(label="Pokéball", style=discord.ButtonStyle.danger)
+    async def pokeball(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_message(f"🔴 {interaction.user.mention} lance une Pokéball !", ephemeral=False)
+
+    @discord.ui.button(label="Superball", style=discord.ButtonStyle.primary)
+    async def superball(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_message(f"🔵 {interaction.user.mention} lance une Superball !", ephemeral=False)
+
+    @discord.ui.button(label="Hyperball", style=discord.ButtonStyle.secondary)
+    async def hyperball(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_message(f"🟣 {interaction.user.mention} lance une Hyperball !", ephemeral=False)
+
+    @discord.ui.button(label="Masterball", style=discord.ButtonStyle.success)
+    async def masterball(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_message(f"🟡 {interaction.user.mention} lance la précieuse Masterball !", ephemeral=False)
+
+
+# ==========================================
 # 🛠️ 1. PANNEAU DE CONTRÔLE ADMIN
 # ==========================================
 
@@ -50,44 +90,26 @@ async def settime(ctx, minutes: float):
     embed = discord.Embed(title="⏳ Intervalle d'Apparition", description=f"Intervalle réglé à **{minutes}** minutes.", color=0xFF69B4)
     await ctx.send(embed=embed)
 
-class CaptureView(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=30) # Les boutons expirent après 30 secondes
-
-    @discord.ui.button(label="Pokéball", style=discord.ButtonStyle.danger)
-    async def pokeball(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message(f"🔴 {interaction.user.mention} lance une Pokéball !", ephemeral=False)
-
-    @discord.ui.button(label="Superball", style=discord.ButtonStyle.primary)
-    async def superball(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message(f"🔵 {interaction.user.mention} lance une Superball !", ephemeral=False)
-
-    @discord.ui.button(label="Hyperball", style=discord.ButtonStyle.secondary)
-    async def hyperball(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message(f"🟣 {interaction.user.mention} lance une Hyperball !", ephemeral=False)
-
-    @discord.ui.button(label="Masterball", style=discord.ButtonStyle.success)
-    async def masterball(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message(f"🟡 {interaction.user.mention} lance la précieuse Masterball !", ephemeral=False)
-
 @bot.command(name="pop")
 @commands.has_permissions(administrator=True)
 async def pop(ctx):
+    # Choisit un Pokémon totalement au hasard dans la liste
+    poke = random.choice(POKEMONS_SAUVAGES)
+    
     embed = discord.Embed(
         title="🌸 — [ ⛩️ JARDIN DES SAKURAS ⛩️ ] — 🌸",
         description=(
             "Un esprit sauvage émerge des cerisiers...\n"
-            "**Shellos**\n"
-            "📏 0.3m | ⚖️ 6.3kg | 🟣 Water\n\n"
+            f"**{poke['nom']}**\n"
+            f"📏 {poke['taille']} | ⚖️ {poke['poids']} | {poke['type']}\n\n"
             "_Utilise `!capture <ball>` ou clique sur les boutons !_"
         ),
         color=0xFF69B4
     )
-    embed.set_image(url="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/422.png")
+    # Charge dynamiquement l'image officielle correspondante
+    embed.set_image(url=f"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/{poke['id']}.png")
     embed.set_footer(text="🏮 Voie des Esprits • Tu as 30 secondes pour le capturer !")
     await ctx.send(embed=embed, view=CaptureView())
-
-# ... (le reste de tes commandes suit en dessous)
 
 @bot.command(name="addmoney")
 @commands.has_permissions(administrator=True)
