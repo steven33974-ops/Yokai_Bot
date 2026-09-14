@@ -330,8 +330,10 @@ async def habitation_ameliorer(ctx):
 
 
 # ==========================================
-# 🃏 7. ARCHIVES DU TCG (CARTES AVEC CADRES & CLASSES)
+# 🃏 7. ARCHIVES DU TCG (TOUS LES POKEMON DE LA LICENCE)
 # ==========================================
+
+import aiohttp
 
 class AlbumView(discord.ui.View):
     def __init__(self, membre):
@@ -340,11 +342,11 @@ class AlbumView(discord.ui.View):
 
     @discord.ui.button(label="◀️ Précédent", style=discord.ButtonStyle.secondary)
     async def precedent(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message("Page précédente...", ephemeral=True)
+        await interaction.response.send_message("Page précédente de l'album...", ephemeral=True)
 
     @discord.ui.button(label="Suivant ▶️", style=discord.ButtonStyle.secondary)
     async def suivant(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message("Page suivante...", ephemeral=True)
+        await interaction.response.send_message("Page suivante de l'album...", ephemeral=True)
 
 
 @bot.command(name="booster_shop")
@@ -352,7 +354,7 @@ async def booster_shop(ctx):
     embed = discord.Embed(
         title="📦 Boutique de Boosters TCG",
         description=(
-            "Achète des paquets pour remplir ton album et collectionner toutes les cartes avec leurs cadres !\n\n"
+            "Achète des paquets pour collectionner **tous** les Pokémon de la licence avec leurs cadres officiels !\n\n"
             "🏷️ **Standard** (500$) : Idéal pour débuter (communes/peu communes).\n"
             "🟣 **Rare** (1500$) : Meilleures chances de cartes brillantes.\n"
             "✨ **Céleste** (5000$) : Le pack ultime pour les ultra-rares !"
@@ -368,14 +370,31 @@ async def acheter_booster(ctx, type_booster: str):
         await ctx.send("❌ Type de booster invalide ! Choisis entre `standard`, `rare` ou `celeste`.", ephemeral=True)
         return
 
-    poke_id = random.choice(POKEMONS_SAUVAGES)
-    
+    # Appel à l'API Pokémon TCG pour récupérer une carte totalement aléatoire parmi toute la franchise
+    async with aiohttp.ClientSession() as session:
+        # On interroge l'API publique (page aléatoire pour varier les Pokémon)
+        page_aleatoire = random.randint(1, 50)
+        async with session.get(f"https://api.pokemontcg.io/v2/cards?page={page_aleatoire}&pageSize=250") as resp:
+            if resp.status == 200:
+                data = await resp.json()
+                cartes_disponibles = data.get("data", [])
+                if cartes_disponibles:
+                    carte = random.choice(cartes_disponibles)
+                    nom_pokemon = carte.get("name", "Pokémon Inconnu")
+                    rarete = carte.get("rarity", type_booster.capitalize())
+                    image_url = carte.get("images", {}).get("large") or carte.get("images", {}).get("small")
+                else:
+                    # Valeur de secours si l'API ne répond pas
+                    nom_pokemon, rarete, image_url = "Mewtwo", "Rare", "https://images.pokemontcg.io/base1/10_hires.png"
+            else:
+                nom_pokemon, rarete, image_url = "Dracaufeu", "Céleste", "https://images.pokemontcg.io/base1/4_hires.png"
+
     embed = discord.Embed(
         title=f"✨ Ouverture de Booster {type_booster.capitalize()} ✨",
-        description=f"Le paquet s'ouvre... et tu obtiens la carte :\n🏷️ **Mewtwo** (*Rareté : {type_booster.capitalize()}*)\n\n_Classe d'artefact scellée avec son cadre authentique._",
+        description=f"Le paquet s'ouvre... et tu obtiens :\n🏷️ **{nom_pokemon}** (*Rareté : {rarete}*)\n\n_Un nouveau Pokémon de la licence rejoint ton grimoire avec son cadre d'origine !_0",
         color=0xFFD700
     )
-    embed.set_image(url="https://images.pokemontcg.io/base1/10_hires.png")
+    embed.set_image(url=image_url)
     embed.set_footer(text=f"Ajouté à la collection de 🌸 ⛩️ {ctx.author.display_name} ⛩️ 🌸 !")
     
     await ctx.send(embed=embed)
@@ -388,7 +407,7 @@ async def album(ctx, membre: discord.Member = None):
         description="Feuillete ton grimoire pour admirer tes cartes de toutes les classes et les montrer aux autres joueurs !",
         color=0xFF69B4
     )
-    embed.add_field(name="🖼️ Cartes Rares & Classées", value="• `1` - Mewtwo [Base - Rareté Rare]\n• `2` - Dracaufeu [Base - Rareté Céleste]", inline=False)
+    embed.add_field(name="🖼️ Collection Globale", value="• `1` - Carte aléatoire de la licence [Toutes Générations]", inline=False)
     embed.set_image(url="https://images.pokemontcg.io/base1/4_hires.png")
     embed.set_footer(text="Utilise les boutons interactifs pour changer de page et admirer les cadres !")
     await ctx.send(embed=embed, view=AlbumView(cible))
