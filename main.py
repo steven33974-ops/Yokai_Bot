@@ -330,11 +330,14 @@ async def habitation_ameliorer(ctx):
 
 
 # ==========================================
-# 🃏 7. ARCHIVES DU TCG (1500+ POKEMON & BOOSTERS DE 8 CARTES)
+# 🃏 7. ARCHIVES DU TCG (INVENTAIRE & ALBUM INTERACTIF)
 # ==========================================
 
 import aiohttp
 import random
+
+# Dictionnaire pour stocker les albums de chaque joueur (clé: ID du membre, valeur: liste de ses cartes)
+INVENTAIRES_JOUEURS = {}
 
 class BoosterView(discord.ui.View):
     def __init__(self, cartes, type_booster, auteur):
@@ -357,7 +360,7 @@ class BoosterView(discord.ui.View):
 
         embed = discord.Embed(
             title=f"✨ Ouverture de Booster {self.type_booster.capitalize()} ({self.index + 1}/8) ✨",
-            description=f"Carte **{self.index + 1} sur 8** du paquet (Licence globale 1500+ Pokémon) :\n🏷️ **{nom}** (*Rareté : {rarete}*)\n\n_Utilise les boutons ci-dessous pour faire défiler ton booster !_",
+            description=f"Carte **{self.index + 1} sur 8** du paquet :\n🏷️ **{nom}** (*Rareté : {rarete}*)\n\n_Ces cartes ont été enregistrées dans ton album !_",
             color=0xFFD700
         )
         embed.set_image(url=image_url)
@@ -386,17 +389,60 @@ class BoosterView(discord.ui.View):
 
 
 class AlbumView(discord.ui.View):
-    def __init__(self, membre):
-        super().__init__(timeout=60)
+    def __init__(self, cartes, membre):
+        super().__init__(timeout=120)
+        self.cartes = cartes
         self.membre = membre
+        self.index = 0
+        self.update_buttons()
+
+    def update_buttons(self):
+        self.precedent_btn.disabled = self.index == 0
+        self.suivant_btn.disabled = self.index >= len(self.cartes) - 1
+
+    def create_embed(self):
+        if not self.cartes:
+            embed = discord.Embed(
+                title=f"📖 Album de Cartes de {self.membre.display_name}",
+                description="Ton album est vide ! Achète des boosters avec `!acheter_booster` pour y ajouter des cartes.",
+                color=0xFF69B4
+            )
+            embed.set_image(url="https://images.pokemontcg.io/base1/4_hires.png")
+            return embed
+
+        carte = self.cartes[self.index]
+        nom = carte.get("name", "Pokémon")
+        rarete = carte.get("rarity", "Standard")
+        image_url = carte.get("images", {}).get("large") or carte.get("images", {}).get("small") or "https://images.pokemontcg.io/base1/4_hires.png"
+
+        embed = discord.Embed(
+            title=f"📖 Album de {self.membre.display_name} (Carte ID: {self.index + 1}/{len(self.cartes)})",
+            description=f"🏷️ **{nom}**\n*Rareté : {rarete}*\n\n_Feuillete ton grimoire pour admirer tes cartes de toutes les générations !_0",
+            color=0xFF69B4
+        )
+        embed.set_image(url=image_url)
+        embed.set_footer(text=f"Utilise `!vendre {self.index + 1} <prix>` pour mettre cette carte au marché !")
+        return embed
 
     @discord.ui.button(label="◀️ Précédent", style=discord.ButtonStyle.secondary)
-    async def precedent(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message("Page précédente de l'album...", ephemeral=True)
+    async def precedent_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user != self.membre and not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message("Ce n'est pas ton album !", ephemeral=True)
+            return
+        if self.index > 0:
+            self.index -= 1
+            self.update_buttons()
+            await interaction.response.edit_message(embed=self.create_embed(), view=self)
 
     @discord.ui.button(label="Suivant ▶️", style=discord.ButtonStyle.secondary)
-    async def suivant(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message("Page suivante de l'album...", ephemeral=True)
+    async def suivant_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user != self.membre and not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message("Ce n'est pas ton album !", ephemeral=True)
+            return
+        if self.index < len(self.cartes) - 1:
+            self.index += 1
+            self.update_buttons()
+            await interaction.response.edit_message(embed=self.create_embed(), view=self)
 
 
 @bot.command(name="booster_shop")
@@ -404,14 +450,15 @@ async def booster_shop(ctx):
     embed = discord.Embed(
         title="📦 Boutique de Boosters TCG (Packs de 8 cartes)",
         description=(
-            "Achète des paquets pour collectionner **tous** les Pokémon de la licence (les 1500+ espèces et variantes) avec leurs cadres officiels !\n\n"
-            "🏷️ **Standard** (500$) : Un booster de 8 cartes.\n"
-            "🟣 **Rare** (1500$) : Un booster de 8 cartes brillantes.\n"
-            "✨ **Céleste** (5000$) : Le pack ultime de 8 cartes ultra-rares !"
+            "Achète des paquets pour collectionner **tous** les Pokémon de la licence (1500+ espèces) avec leurs cadres officiels !\n\n"
+            "🏷️ **Standard** (500$) : Booster de 8 cartes.\n"
+            "🟣 **Rare** (1500$) : Booster de 8 cartes brillantes.\n"
+            "✨ **Céleste** (5000$) : Booster ultime de 8 cartes ultra-rares !"
         ),
         color=0xFF69B4
     )
     await ctx.send(embed=embed)
+
 
 @bot.command(name="acheter_booster")
 async def acheter_booster(ctx, type_booster: str):
@@ -420,7 +467,7 @@ async def acheter_booster(ctx, type_booster: str):
         await ctx.send("❌ Type de booster invalide ! Choisis entre `standard`, `rare` ou `celeste`.", ephemeral=True)
         return
 
-    # Connexion dynamique à l'API Pokémon TCG pour piocher parmi les 1500+ références de la licence
+    # Connexion à l'API pour piocher 8 cartes parmi la collection globale
     async with aiohttp.ClientSession() as session:
         page_aleatoire = random.randint(1, 60)
         async with session.get(f"https://api.pokemontcg.io/v2/cards?page={page_aleatoire}&pageSize=250") as resp:
@@ -433,7 +480,6 @@ async def acheter_booster(ctx, type_booster: str):
     if len(toutes_les_cartes) >= 8:
         cartes_booster = random.sample(toutes_les_cartes, 8)
     else:
-        # Lot de secours si l'API rencontre un délai
         cartes_booster = [
             {"name": "Pikachu", "rarity": "Standard", "images": {"large": "https://images.pokemontcg.io/base1/58_hires.png"}},
             {"name": "Dracaufeu", "rarity": "Céleste", "images": {"large": "https://images.pokemontcg.io/base1/4_hires.png"}},
@@ -445,48 +491,79 @@ async def acheter_booster(ctx, type_booster: str):
             {"name": "Ectoplasma", "rarity": "Rare", "images": {"large": "https://images.pokemontcg.io/base1/5_hires.png"}}
         ]
 
-    # Lancement de la vue interactive avec les boutons de défilement
+    # Enregistrement automatique des 8 cartes dans l'album du joueur
+    user_id = ctx.author.id
+    if user_id not in INVENTAIRES_JOUEURS:
+        INVENTAIRES_JOUEURS[user_id] = []
+    INVENTAIRES_JOUEURS[user_id].extend(cartes_booster)
+
+    # Affichage du booster interactif
     vue = BoosterView(cartes_booster, type_booster, ctx.author)
     await ctx.send(embed=vue.create_embed(), view=vue)
+
 
 @bot.command(name="album")
 async def album(ctx, membre: discord.Member = None):
     cible = membre or ctx.author
-    embed = discord.Embed(
-        title=f"📖 Album de Cartes de {cible.display_name}",
-        description="Feuillete ton grimoire pour admirer tes cartes de toutes les générations et les montrer aux autres joueurs !",
-        color=0xFF69B4
-    )
-    embed.add_field(name="🖼️ Collection Globale", value="• Contient toutes tes cartes obtenues par paquets de 8.", inline=False)
-    embed.set_image(url="https://images.pokemontcg.io/base1/4_hires.png")
-    embed.set_footer(text="Utilise les boutons interactifs pour changer de page !")
-    await ctx.send(embed=embed, view=AlbumView(cible))
+    user_id = cible.id
+    cartes_utilisateur = INVENTAIRES_JOUEURS.get(user_id, [])
+
+    vue = AlbumView(cartes_utilisateur, cible)
+    await ctx.send(embed=vue.create_embed(), view=vue)
+
 
 @bot.command(name="afficher")
 async def afficher(ctx, *ids: int):
-    cartes = ", ".join(map(str, ids))
+    user_id = ctx.author.id
+    cartes_utilisateur = INVENTAIRES_JOUEURS.get(user_id, [])
+    
+    if not cartes_utilisateur:
+        await ctx.send("❌ Ton album est vide, achète des boosters pour pouvoir exposer des cartes !", ephemeral=True)
+        return
+
     embed = discord.Embed(
         title="🖼️ Vitrine des Esprits & Cadres Rares",
-        description=f"{ctx.author.mention} expose fièrement ses cartes d'IDs : **{cartes}** !",
+        description=f"{ctx.author.mention} expose fièrement ses cartes !",
         color=0xFFD700
     )
-    embed.set_image(url="https://images.pokemontcg.io/base1/2_hires.png")
+    # Prend la première carte demandée pour l'illustration de la vitrine
+    if ids and 1 <= ids[0] <= len(cartes_utilisateur):
+        carte_vitrine = cartes_utilisateur[ids[0] - 1]
+        image_url = carte_vitrine.get("images", {}).get("large") or carte_vitrine.get("images", {}).get("small")
+        embed.set_image(url=image_url)
+    
     await ctx.send(embed=embed)
+
 
 @bot.command(name="marche")
 async def marche(ctx):
     embed = discord.Embed(title="🏪 Hôtel des Ventes", description="Voici les cartes de collection actuellement en vente par les joueurs.", color=0xFF69B4)
     await ctx.send(embed=embed)
 
+
 @bot.command(name="vendre")
 async def vendre(ctx, id_album: int, prix: int):
-    embed = discord.Embed(title="🏷️ Annonce de Vente", description=f"Carte encadrée (ID album : **{id_album}**) mise en vente sur le marché pour **{prix}$**.", color=0xFF69B4)
+    user_id = ctx.author.id
+    cartes_utilisateur = INVENTAIRES_JOUEURS.get(user_id, [])
+    
+    if not (1 <= id_album <= len(cartes_utilisateur)):
+        await ctx.send("❌ ID de carte invalide dans ton album !", ephemeral=True)
+        return
+
+    carte_a_vendre = cartes_utilisateur[id_album - 1]
+    embed = discord.Embed(
+        title="🏷️ Annonce de Vente", 
+        description=f"La carte **{carte_a_vendre.get('name')}** (ID album : **{id_album}**) a été mise en vente pour **{prix}$** !", 
+        color=0xFF69B4
+    )
     await ctx.send(embed=embed)
+
 
 @bot.command(name="acheter_carte")
 async def acheter_carte(ctx, id_vente: int):
     embed = discord.Embed(title="💸 Acquisition Réussie", description=f"Achat de la carte de collection (Vente ID : **{id_vente}**) réussi avec succès !", color=0xFF69B4)
     await ctx.send(embed=embed)
+
 
 @bot.command(name="retirer_vente")
 async def retirer_vente(ctx, id_vente: int):
