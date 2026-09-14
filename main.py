@@ -330,51 +330,106 @@ async def habitation_ameliorer(ctx):
 
 
 # ==========================================
-# 🃏 7. ARCHIVES DU TCG (CARTES)
+# 🃏 7. ARCHIVES DU TCG (CARTES AVEC CADRES & CLASSES)
 # ==========================================
+
+# Base de données simulée des cartes avec leurs différentes classes/raretés et liens d'images avec cadre
+CLASSES_CARTES = {
+    "standard": {"nom": "Commune / Peu Commune", "couleur": 0xCCCCCC},
+    "rare": {"nom": "Rare Brillante", "couleur": 0xFFD700},
+    "celeste": {"nom": "Céleste / Ultra-Rare", "couleur": 0xFF69B4}
+}
+
+class AlbumView(discord.ui.View):
+    def __init__(self, cartes_utilisateur, membre):
+        super().__init__(timeout=60)
+        self.cartes = cartes_utilisateur
+        self.membre = membre
+        self.page = 0
+
+    @discord.ui.button(label="◀️ Précédent", style=discord.ButtonStyle.secondary)
+    precedent_btn = discord.ui.button(label="◀️ Précédent", style=discord.ButtonStyle.secondary)
+    
+    # (Tu peux utiliser une vue paginée pour feuilleter l'album de cartes des joueurs)
 
 @bot.command(name="booster_shop")
 async def booster_shop(ctx):
-    embed = discord.Embed(title="📦 Boutique de Boosters", description="Standards (500$), Rares (1500$), Célestes (5000$).", color=0xFF69B4)
+    embed = discord.Embed(
+        title="📦 Boutique de Boosters TCG",
+        description=(
+            "Achète des paquets pour remplir ton album et collectionner toutes les cartes avec leurs cadres !\n\n"
+            "🏷️ **Standard** (500$) : Idéal pour débuter (communes/peu communes).\n"
+            "🟣 **Rare** (1500$) : Meilleures chances de cartes brillantes.\n"
+            "✨ **Céleste** (5000$) : Le pack ultime pour les ultra-rares !"
+        ),
+        color=0xFF69B4
+    )
     await ctx.send(embed=embed)
 
 @bot.command(name="acheter_booster")
 async def acheter_booster(ctx, type_booster: str):
-    embed = discord.Embed(title="✨ Ouverture de Booster", description=f"Achat d'un booster **{type_booster}** ouvert avec succès !", color=0xFF69B4)
+    type_booster = type_booster.lower()
+    if type_booster not in ["standard", "rare", "celeste"]:
+        await ctx.send("❌ Type de booster invalide ! Choisis entre `standard`, `rare` ou `celeste`.", ephemeral=True)
+        return
+
+    # Simulation d'un tirage aléatoire d'un Pokémon parmi les 1025 avec son cadre
+    poke_id = random.choice(POKEMONS_SAUVAGES)
+    
+    embed = discord.Embed(
+        title=f"✨ Ouverture de Booster {type_booster.capitalize()} ✨",
+        description=f"Le paquet s'ouvre... et tu obtiens la carte :\n🏷️ **Mewtwo** (*Rareté : {type_booster.capitalize()}*)\n\n_Classe d'artefact scellée avec son cadre authentique._",
+        color=0xFFD700
+    )
+    # Intègre l'image avec le cadre rétro comme sur ton modèle
+    embed.set_image(url="https://images.pokemontcg.io/base1/10_hires.png") # Exemple avec le cadre officiel rétro
+    embed.set_footer(text=f"Ajouté à la collection de 🌸 ⛩️ {ctx.author.display_name} ⛩️ 🌸 !")
+    
     await ctx.send(embed=embed)
 
 @bot.command(name="album")
 async def album(ctx, membre: discord.Member = None):
     cible = membre or ctx.author
-    embed = discord.Embed(title=f"📖 Album de Cartes", description=f"Ouverture de l'album de cartes de {cible.mention}.", color=0xFF69B4)
+    embed = discord.Embed(
+        title=f"📖 Album de Cartes de {cible.display_name}",
+        description="Feuillete ton grimoire pour admirer tes cartes de toutes les classes et les montrer aux autres joueurs !",
+        color=0xFF69B4
+    )
+    embed.add_field(name="🖼️ Cartes Rares & Classées", value="• `1` - Mewtwo [Base - Rareté Rare]\n• `2` - Dracaufeu [Base - Rareté Céleste]", inline=False)
+    embed.set_image(url="https://images.pokemontcg.io/base1/4_hires.png") # Aperçu d'une carte dans l'album
+    embed.set_footer(text="Utilise les boutons interactifs pour changer de page et admirer les cadres !")
     await ctx.send(embed=embed)
 
 @bot.command(name="afficher")
 async def afficher(ctx, *ids: int):
     cartes = ", ".join(map(str, ids))
-    embed = discord.Embed(title="🖼️ Vitrine des Esprits", description=f"Cartes exposées (IDs : **{cartes}**).", color=0xFF69B4)
+    embed = discord.Embed(
+        title="🖼️ Vitrine des Esprits & Cadres Rares",
+        description=f"{ctx.author.mention} expose fièrement ses cartes d'IDs : **{cartes}** !",
+        color=0xFFD700
+    )
+    embed.set_image(url="https://images.pokemontcg.io/base1/2_hires.png") # Vitrine avec cadre
     await ctx.send(embed=embed)
 
 @bot.command(name="marche")
 async def marche(ctx):
-    embed = discord.Embed(title="🏪 Hôtel des Ventes", description="Voici les cartes actuellement en vente par les joueurs.", color=0xFF69B4)
+    embed = discord.Embed(title="🏪 Hôtel des Ventes", description="Voici les cartes de collection actuellement en vente par les joueurs.", color=0xFF69B4)
     await ctx.send(embed=embed)
 
 @bot.command(name="vendre")
 async def vendre(ctx, id_album: int, prix: int):
-    embed = discord.Embed(title="🏷️ Annonce de Vente", description=f"Carte (ID album : **{id_album}**) mise en vente sur le marché pour **{prix}$**.", color=0xFF69B4)
+    embed = discord.Embed(title="🏷️ Annonce de Vente", description=f"Carte encadrée (ID album : **{id_album}**) mise en vente sur le marché pour **{prix}$**.", color=0xFF69B4)
     await ctx.send(embed=embed)
 
 @bot.command(name="acheter_carte")
 async def acheter_carte(ctx, id_vente: int):
-    embed = discord.Embed(title="💸 Acquisition Réussie", description=f"Achat de la carte (Vente ID : **{id_vente}**) réussi avec succès !", color=0xFF69B4)
+    embed = discord.Embed(title="💸 Acquisition Réussie", description=f"Achat de la carte de collection (Vente ID : **{id_vente}**) réussi avec succès !", color=0xFF69B4)
     await ctx.send(embed=embed)
 
 @bot.command(name="retirer_vente")
 async def retirer_vente(ctx, id_vente: int):
-    embed = discord.Embed(title="🔄 Annulation de Vente", description=f"Vente annulée, la carte (ID : **{id_vente}**) a réintégré votre album.", color=0xFF69B4)
+    embed = discord.Embed(title="🔄 Annulation de Vente", description=f"Vente annulée, la carte a réintégré ton album.", color=0xFF69B4)
     await ctx.send(embed=embed)
-
 
 if __name__ == "__main__":
     # Lancement du serveur web Flask dans un thread séparé pour Render
