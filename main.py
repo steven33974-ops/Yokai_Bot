@@ -330,11 +330,60 @@ async def habitation_ameliorer(ctx):
 
 
 # ==========================================
-# 🃏 7. ARCHIVES DU TCG (POKEDEX GLOBAL & BOOSTERS DE 8 CARTES)
+# 🃏 7. ARCHIVES DU TCG (1500+ POKEMON & BOOSTERS DE 8 CARTES)
 # ==========================================
 
 import aiohttp
 import random
+
+class BoosterView(discord.ui.View):
+    def __init__(self, cartes, type_booster, auteur):
+        super().__init__(timeout=120)
+        self.cartes = cartes
+        self.type_booster = type_booster
+        self.auteur = auteur
+        self.index = 0
+        self.update_buttons()
+
+    def update_buttons(self):
+        self.precedent_btn.disabled = self.index == 0
+        self.suivant_btn.disabled = self.index == len(self.cartes) - 1
+
+    def create_embed(self):
+        carte = self.cartes[self.index]
+        nom = carte.get("name", "Pokémon")
+        rarete = carte.get("rarity", self.type_booster.capitalize())
+        image_url = carte.get("images", {}).get("large") or carte.get("images", {}).get("small") or "https://images.pokemontcg.io/base1/4_hires.png"
+
+        embed = discord.Embed(
+            title=f"✨ Ouverture de Booster {self.type_booster.capitalize()} ({self.index + 1}/8) ✨",
+            description=f"Carte **{self.index + 1} sur 8** du paquet (Licence globale 1500+ Pokémon) :\n🏷️ **{nom}** (*Rareté : {rarete}*)\n\n_Utilise les boutons ci-dessous pour faire défiler ton booster !_",
+            color=0xFFD700
+        )
+        embed.set_image(url=image_url)
+        embed.set_footer(text=f"Booster ouvert par 🌸 ⛩️ {self.auteur.display_name} ⛩️ 🌸")
+        return embed
+
+    @discord.ui.button(label="◀️ Précédent", style=discord.ButtonStyle.secondary)
+    async def precedent_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user != self.auteur:
+            await interaction.response.send_message("Ce n'est pas ton booster !", ephemeral=True)
+            return
+        if self.index > 0:
+            self.index -= 1
+            self.update_buttons()
+            await interaction.response.edit_message(embed=self.create_embed(), view=self)
+
+    @discord.ui.button(label="Suivant ▶️", style=discord.ButtonStyle.secondary)
+    async def suivant_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user != self.auteur:
+            await interaction.response.send_message("Ce n'est pas ton booster !", ephemeral=True)
+            return
+        if self.index < len(self.cartes) - 1:
+            self.index += 1
+            self.update_buttons()
+            await interaction.response.edit_message(embed=self.create_embed(), view=self)
+
 
 class AlbumView(discord.ui.View):
     def __init__(self, membre):
@@ -355,10 +404,10 @@ async def booster_shop(ctx):
     embed = discord.Embed(
         title="📦 Boutique de Boosters TCG (Packs de 8 cartes)",
         description=(
-            "Achète des paquets pour collectionner **tous** les Pokémon de la licence (de Kanto à Paldea) avec leurs cadres officiels !\n\n"
-            "🏷️ **Standard** (500$) : Un booster de 8 cartes (majorité communes).\n"
-            "🟣 **Rare** (1500$) : Un booster de 8 cartes avec de superbes cartes brillantes.\n"
-            "✨ **Céleste** (5000$) : Le pack ultime de 8 cartes garantissant un max d'ultra-rares !"
+            "Achète des paquets pour collectionner **tous** les Pokémon de la licence (les 1500+ espèces et variantes) avec leurs cadres officiels !\n\n"
+            "🏷️ **Standard** (500$) : Un booster de 8 cartes.\n"
+            "🟣 **Rare** (1500$) : Un booster de 8 cartes brillantes.\n"
+            "✨ **Céleste** (5000$) : Le pack ultime de 8 cartes ultra-rares !"
         ),
         color=0xFF69B4
     )
@@ -371,9 +420,8 @@ async def acheter_booster(ctx, type_booster: str):
         await ctx.send("❌ Type de booster invalide ! Choisis entre `standard`, `rare` ou `celeste`.", ephemeral=True)
         return
 
-    # Appel à l'API Pokémon TCG pour piocher dynamiquement 8 cartes différentes parmi des milliers
+    # Connexion dynamique à l'API Pokémon TCG pour piocher parmi les 1500+ références de la licence
     async with aiohttp.ClientSession() as session:
-        # On choisit une page aléatoire parmi les extensions existantes pour avoir une variété maximale
         page_aleatoire = random.randint(1, 60)
         async with session.get(f"https://api.pokemontcg.io/v2/cards?page={page_aleatoire}&pageSize=250") as resp:
             if resp.status == 200:
@@ -382,11 +430,10 @@ async def acheter_booster(ctx, type_booster: str):
             else:
                 toutes_les_cartes = []
 
-    # Si l'API répond, on pioche 8 cartes aléatoires dans le lot
     if len(toutes_les_cartes) >= 8:
         cartes_booster = random.sample(toutes_les_cartes, 8)
     else:
-        # Lot de secours si l'API est trop occupée
+        # Lot de secours si l'API rencontre un délai
         cartes_booster = [
             {"name": "Pikachu", "rarity": "Standard", "images": {"large": "https://images.pokemontcg.io/base1/58_hires.png"}},
             {"name": "Dracaufeu", "rarity": "Céleste", "images": {"large": "https://images.pokemontcg.io/base1/4_hires.png"}},
@@ -398,27 +445,9 @@ async def acheter_booster(ctx, type_booster: str):
             {"name": "Ectoplasma", "rarity": "Rare", "images": {"large": "https://images.pokemontcg.io/base1/5_hires.png"}}
         ]
 
-    # Mise en forme du texte affichant les 8 cartes du booster
-    description_cartes = ""
-    for i, carte in enumerate(cartes_booster, 1):
-        nom = carte.get("name", "Pokémon")
-        rarete = carte.get("rarity", type_booster.capitalize())
-        description_cartes += f"`{i}.` **{nom}** (*{rarete}*)\n"
-
-    # On prend la première carte du paquet pour l'illustrer en grand visuel (avec son cadre)
-    premiere_carte = cartes_booster[0]
-    image_url = premiere_carte.get("images", {}).get("large") or premiere_carte.get("images", {}).get("small") or "https://images.pokemontcg.io/base1/4_hires.png"
-    nom_principal = premiere_carte.get("name", "Pokémon")
-
-    embed = discord.Embed(
-        title=f"✨ Ouverture de Booster {type_booster.capitalize()} (8 Cartes) ✨",
-        description=f"Le paquet se déchire et révèle ses 8 trésors de la licence :\n\n{description_cartes}\n_Toutes ces cartes ont été ajoutées à ton album !_",
-        color=0xFFD700
-    )
-    embed.set_image(url=image_url)
-    embed.set_footer(text=f"Booster ouvert par 🌸 ⛩️ {ctx.author.display_name} ⛩️ 🌸 (En vedette : {nom_principal})")
-    
-    await ctx.send(embed=embed)
+    # Lancement de la vue interactive avec les boutons de défilement
+    vue = BoosterView(cartes_booster, type_booster, ctx.author)
+    await ctx.send(embed=vue.create_embed(), view=vue)
 
 @bot.command(name="album")
 async def album(ctx, membre: discord.Member = None):
