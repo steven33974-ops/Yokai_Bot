@@ -887,12 +887,19 @@ async def prendre_quete(ctx, difficulte: str = "facile"):
   )
   conn.commit()
 
-  await ctx.send(
-      f"📜 **Nouvelle mission acceptée !**\n👤 {ctx.author.mention} s'est lancé"
-      f" dans un défi **{diff}** :\n🎯 **Objectif :** Capturer {objectif}"
-      f" esprits.\n💰 **Récompense :** {recompense}$ !\n*Utilise `!quetes` pour"
-      " suivre ta progression.*"
+  # Création du bel embed avec le cadre rose
+  embed = discord.Embed(
+      title="📜 Nouvelle mission acceptée !",
+      description=(
+          f"👤 {ctx.author.mention} s'est lancé dans un défi **{diff}** :\n🎯"
+          f" **Objectif :** Capturer {objectif} esprits.\n💰 **Récompense :**"
+          f" {recompense}$ !"
+      ),
+      color=0xFFB7C5,
   )
+  embed.set_footer(text="Utilise !quetes pour suivre ta progression.")
+
+  await ctx.send(embed=embed)
 
 # --- PAGINATION POKÉDEX ---
 class PokedexPaginator(discord.ui.View):
