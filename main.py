@@ -904,9 +904,18 @@ async def clan_investir(ctx, montant: int):
     conn.commit()
     await ctx.send(f"🌸 Investissement de {montant}$ réussi dans le clan {c_name} !")
 
-# Lancement du Bot
-TOKEN = os.getenv("DISCORD_TOKEN")
-if TOKEN:
-    discord_bot.run(TOKEN)
-else:
-    pass
+# --- LANCEMENT DU WEB SERVEUR ET DU BOT ---
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    
+    def run_flask():
+        app.run(host="0.0.0.0", port=port)
+
+    t = threading.Thread(target=run_flask)
+    t.start()
+
+    TOKEN = os.getenv("DISCORD_TOKEN")
+    if TOKEN:
+        discord_bot.run(TOKEN)
+    else:
+        print("Erreur : Aucun token Discord trouvé !")
