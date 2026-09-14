@@ -1,7 +1,21 @@
+import os
+import threading
+from flask import Flask
 import discord
 from discord.ext import commands
 
-# Configuration du bot avec les intents nécessaires
+# 1. Mini-serveur Flask pour satisfaire Render (Service Web)
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "Le sanctuaire des Yōkai est en ligne ! 🌸"
+
+def run_web():
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
+
+# 2. Configuration du Bot Discord
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
@@ -19,7 +33,6 @@ async def on_ready():
 @bot.command(name="adminhelp")
 @commands.has_permissions(administrator=True)
 async def adminhelp(ctx):
-    """Affiche le grimoire d'aide réservé aux administrateurs."""
     embed = discord.Embed(title="🛡️ Grimoire Admin", color=discord.Color.red())
     embed.add_field(name="Commandes", value="`!setchannel`, `!settime`, `!pop`, `!addmoney`, `!removemoney`, `!resetplayer`, `!givepokemon`", inline=False)
     await ctx.send(embed=embed)
@@ -243,5 +256,14 @@ async def acheter_carte(ctx, id_vente: int):
 async def retirer_vente(ctx, id_vente: int):
     await ctx.send(f"🔄 Vente annulée, la carte (ID : {id_vente}) a réintégré votre album.")
 
-# Lancement du bot (Remplacez 'VOTRE_TOKEN' par votre vrai token Discord)
-# bot.run("VOTRE_TOKEN")
+
+if __name__ == "__main__":
+    # Lancement du serveur web Flask dans un thread séparé pour Render
+    threading.Thread(target=run_web).start()
+    
+    # Récupération du token depuis les variables d'environnement de Render
+    TOKEN = os.getenv("DISCORD_TOKEN")
+    if TOKEN:
+        bot.run(TOKEN)
+    else:
+        print("❌ Erreur : Le token Discord (DISCORD_TOKEN) n'est pas défini dans les variables d'environnement !")
