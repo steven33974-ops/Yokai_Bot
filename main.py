@@ -3,7 +3,7 @@ import threading
 import random
 from flask import Flask
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks  # 👈 Ajoute "tasks" ici
 
 # 1. Mini-serveur Flask pour satisfaire Render (Service Web)
 app = Flask(__name__)
@@ -23,9 +23,65 @@ intents.members = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
+# ==========================================
+# ⚙️ CONFIGURATION DU SPAWN AUTOMATIQUE
+# ==========================================
+SALON_APPARITION_ID = None
+TEMPS_APPARITION = 1.0  # en minutes (modifiable avec !settime)
+
+@bot.command(name="setchannel")
+@commands.has_permissions(administrator=True)
+async def setchannel(ctx, channel: discord.TextChannel):
+    global SALON_APPARITION_ID
+    SALON_APPARITION_ID = channel.id
+    await ctx.send(f"✅ Salon d'apparition défini avec succès sur {channel.mention} !")
+
+@bot.command(name="settime")
+@commands.has_permissions(administrator=True)
+async def settime(ctx, minutes: float):
+    global TEMPS_APPARITION
+    TEMPS_APPARITION = minutes
+    spawn_loop.change_interval(minutes=minutes)
+    await ctx.send(f"✅ Intervalle d'apparition réglé à {minutes} minutes !")
+
+# Tâche de fond pour faire spawner les Pokémon automatiquement
+@tasks.loop(minutes=1.0)
+async def spawn_loop():
+    if SALON_APPARITION_ID is None:
+        return
+    
+    channel = bot.get_channel(SALON_APPARITION_ID)
+    if channel is None:
+        return
+
+    # Utilise ta liste POKEMONS_SAUVAGES (qui contient range(1, 1026))
+    poke_id = random.choice(POKEMONS_SAUVAGES)
+    image_url = f"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/{poke_id}.png"
+
+    embed = discord.Embed(
+        title="✨ Un Pokémon sauvage apparaît ! ✨",
+        description=f"Un esprit **n°{poke_id}** surgit des hautes herbes !\nUtilise les boutons ci-dessous pour tenter de le capturer.",
+        color=0xFF69B4
+    )
+    embed.set_image(url=image_url)
+    embed.set_footer(text="Choisis ta Pokéball avec sagesse...")
+
+    vue = CaptureView(poke_id=poke_id)
+    await channel.send(embed=embed, view=vue)
+
 @bot.event
 async def on_ready():
     print(f"Le sanctuaire est éveillé : {bot.user.name} est en ligne ! 🌸")
+    
+    # 🚀 Démarrage de la boucle de spawn automatique
+    if not spawn_loop.is_running():
+        spawn_loop.start()
+        print("🚀 Le système d'apparition automatique des Pokémon est actif !")
+
+
+# ==========================================
+# 🎁 SYSTÈME DE CAPTURE AVEC BOUTONS & ALÉATOIRE (1025 POKÉMON)
+# ==========================================
 
 # ==========================================
 # 🎁 SYSTÈME DE CAPTURE AVEC BOUTONS & ALÉATOIRE (1025 POKÉMON)
