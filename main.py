@@ -34,24 +34,46 @@ async def on_ready():
 POKEMONS_SAUVAGES = list(range(1, 1026))
 
 class CaptureView(discord.ui.View):
-    def __init__(self):
+    def __init__(self, poke_id):
         super().__init__(timeout=30)
+        self.poke_id = poke_id
+        self.captured = False
+
+    async def tenter_capture(self, interaction: discord.Interaction, nom_ball: str, taux_reussite: float):
+        if self.captured:
+            await interaction.response.send_message("❌ Cet esprit a déjà été capturé !", ephemeral=True)
+            return
+
+        for child in self.children:
+            child.disabled = True
+
+        if random.random() < taux_reussite:
+            self.captured = True
+            embed = interaction.message.embeds[0]
+            embed.color = 0x00FF00
+            embed.set_footer(text=f"🏮 Capturé avec succès par {interaction.user.display_name} !")
+            
+            await interaction.response.edit_message(embed=embed, view=self)
+            await interaction.followup.send(f"✨ **Bravo {interaction.user.mention} !** Tu as réussi à capturer l'esprit **n°{self.poke_id}** avec une {nom_ball} ! 🌸")
+        else:
+            await interaction.response.edit_message(view=self)
+            await interaction.followup.send(f"💨 Oh non ! L'esprit **n°{self.poke_id}** a esquivé la {nom_ball} de {interaction.user.mention} et s'est échappé dans les bois...", ephemeral=False)
 
     @discord.ui.button(label="Pokéball", style=discord.ButtonStyle.danger)
     async def pokeball(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message(f"🔴 {interaction.user.mention} lance une Pokéball !", ephemeral=False)
+        await self.tenter_capture(interaction, "Pokéball", 0.40)
 
     @discord.ui.button(label="Superball", style=discord.ButtonStyle.primary)
     async def superball(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message(f"🔵 {interaction.user.mention} lance une Superball !", ephemeral=False)
+        await self.tenter_capture(interaction, "Superball", 0.65)
 
     @discord.ui.button(label="Hyperball", style=discord.ButtonStyle.secondary)
     async def hyperball(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message(f"🟣 {interaction.user.mention} lance une Hyperball !", ephemeral=False)
+        await self.tenter_capture(interaction, "Hyperball", 0.85)
 
     @discord.ui.button(label="Masterball", style=discord.ButtonStyle.success)
     async def masterball(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message(f"🟡 {interaction.user.mention} lance la précieuse Masterball !", ephemeral=False)
+        await self.tenter_capture(interaction, "Masterball", 1.00)
 
 
 # ==========================================
@@ -89,13 +111,13 @@ async def pop(ctx):
             "Un esprit sauvage émerge des cerisiers...\n"
             f"**Esprit # {poke_id}**\n"
             f"🔮 Identifiant dimensionnel n°{poke_id}\n\n"
-            "_Utilise `!capture <ball>` ou clique sur les boutons !_"
+            "_Clique sur une Ball pour tenter la capture !_"
         ),
         color=0xFF69B4
     )
     embed.set_image(url=f"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/{poke_id}.png")
     embed.set_footer(text="🏮 Voie des Esprits • Tu as 30 secondes pour le capturer !")
-    await ctx.send(embed=embed, view=CaptureView())
+    await ctx.send(embed=embed, view=CaptureView(poke_id))
 
 @bot.command(name="addmoney")
 @commands.has_permissions(administrator=True)
