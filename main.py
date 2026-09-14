@@ -78,11 +78,6 @@ async def on_ready():
         spawn_loop.start()
         print("🚀 Le système d'apparition automatique des Pokémon est actif !")
 
-
-# ==========================================
-# 🎁 SYSTÈME DE CAPTURE AVEC BOUTONS & ALÉATOIRE (1025 POKÉMON)
-# ==========================================
-
 # ==========================================
 # 🎁 SYSTÈME DE CAPTURE AVEC BOUTONS & ALÉATOIRE (1025 POKÉMON)
 # ==========================================
@@ -141,19 +136,6 @@ class CaptureView(discord.ui.View):
 async def adminhelp(ctx):
     embed = discord.Embed(title="🛡️ Grimoire Admin", color=discord.Color.red())
     embed.add_field(name="Commandes", value="`!setchannel`, `!settime`, `!pop`, `!addmoney`, `!removemoney`, `!resetplayer`, `!givepokemon`", inline=False)
-    await ctx.send(embed=embed)
-
-@bot.command(name="setchannel")
-@commands.has_permissions(administrator=True)
-async def setchannel(ctx, salon: discord.TextChannel = None):
-    salon_cible = salon or ctx.channel
-    embed = discord.Embed(title="⛩️ Configuration du Salon", description=f"Le salon {salon_cible.mention} est désormais le sanctuaire officiel des esprits.", color=0xFF69B4)
-    await ctx.send(embed=embed)
-
-@bot.command(name="settime")
-@commands.has_permissions(administrator=True)
-async def settime(ctx, minutes: float):
-    embed = discord.Embed(title="⏳ Intervalle d'Apparition", description=f"Intervalle réglé à **{minutes}** minutes.", color=0xFF69B4)
     await ctx.send(embed=embed)
 
 @bot.command(name="pop")
@@ -451,7 +433,6 @@ class BoosterView(discord.ui.View):
             self.update_buttons()
             await interaction.response.edit_message(embed=self.create_embed(), view=self)
 
-
 class AlbumView(discord.ui.View):
     def __init__(self, cartes, membre):
         super().__init__(timeout=120)
@@ -524,7 +505,6 @@ class AlbumView(discord.ui.View):
             self.update_buttons()
             await interaction.response.edit_message(embed=self.create_embed(), view=self)
 
-
 @bot.command(name="booster_shop")
 async def booster_shop(ctx):
     embed = discord.Embed(
@@ -578,7 +558,6 @@ async def acheter_booster(ctx, type_booster: str):
     vue = BoosterView(cartes_booster, type_booster, ctx.author)
     await ctx.send(embed=vue.create_embed(), view=vue)
 
-
 @bot.command(name="album")
 async def album(ctx, membre: discord.Member = None):
     cible = membre or ctx.author
@@ -587,7 +566,6 @@ async def album(ctx, membre: discord.Member = None):
 
     vue = AlbumView(cartes_utilisateur, cible)
     await ctx.send(embed=vue.create_embed(), view=vue)
-
 
 @bot.command(name="pokedex")
 async def pokedex(ctx, membre: discord.Member = None):
@@ -612,12 +590,6 @@ async def pokedex(ctx, membre: discord.Member = None):
     embed.set_footer(text="Ouvre de nouveaux boosters avec !acheter_booster pour cocher les manquants !")
     await ctx.send(embed=embed)
 
-
-@bot.command(name="afficher")
-async def afficher(ctx, *ids: int):
-    user_id = ctx.author.id
-    cartes_utilisateur = INVENTAIRES_JOUEURS.get(user_id, [])
-    
     if not cartes_utilisateur:
         await ctx.send("❌ Ton album est vide, achète des boosters pour pouvoir exposer des cartes !", ephemeral=True)
         return
@@ -634,12 +606,10 @@ async def afficher(ctx, *ids: int):
     
     await ctx.send(embed=embed)
 
-
 @bot.command(name="marche")
 async def marche(ctx):
     embed = discord.Embed(title="🏪 Hôtel des Ventes", description="Voici les cartes de collection actuellement en vente par les joueurs.", color=0xFF69B4)
     await ctx.send(embed=embed)
-
 
 @bot.command(name="vendre")
 async def vendre(ctx, id_album: int, prix: int):
@@ -657,7 +627,6 @@ async def vendre(ctx, id_album: int, prix: int):
         color=0xFF69B4
     )
     await ctx.send(embed=embed)
-
 
 @bot.command(name="acheter_carte")
 async def acheter_carte(ctx, id_vente: int):
