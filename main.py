@@ -614,6 +614,47 @@ async def retirer_vente(ctx, id_vente: int):
     embed = discord.Embed(title="🔄 Annulation de Vente", description=f"Vente annulée, la carte a réintégré ton album.", color=0xFF69B4)
     await ctx.send(embed=embed)
 
+import discord
+from discord.ext import commands
+import aiohttp
+import random
+
+# ==========================================
+# 🖼️ COMMANDE POUR AFFICHER UNE CARTE EN GRAND
+# ==========================================
+
+@bot.command(name="afficher")
+async def afficher(ctx, id_album: int):
+    user_id = ctx.author.id
+    cartes_utilisateur = INVENTAIRES_JOUEURS.get(user_id, [])
+    
+    # Vérifie si l'album contient des cartes et si l'ID demandé est valide
+    if not cartes_utilisateur:
+        await ctx.send("❌ Ton album est vide, achète des boosters avec `!acheter_booster` pour obtenir des cartes !", ephemeral=True)
+        return
+
+    if not (1 <= id_album <= len(cartes_utilisateur)):
+        await ctx.send(f"❌ Numéro de carte invalide ! Choisis un ID entre 1 et {len(cartes_utilisateur)} (visible dans ton `!album`).", ephemeral=True)
+        return
+
+    # Récupère la carte correspondante dans l'album
+    carte = cartes_utilisateur[id_album - 1]
+    nom = carte.get("name", "Pokémon")
+    rarete = carte.get("rarity", "Standard")
+    
+    # Récupère l'image grand format (ou l'image standard par défaut)
+    image_url = carte.get("images", {}).get("large") or carte.get("images", {}).get("small") or "https://images.pokemontcg.io/base1/4_hires.png"
+
+    embed = discord.Embed(
+        title=f"🖼️ Carte #{id_album} • {nom}",
+        description=f"✨ *Rareté : {rarete}*\nExposée par {ctx.author.mention}",
+        color=0xFFD700
+    )
+    embed.set_image(url=image_url)
+    embed.set_footer(text=f"Utilise !album pour retrouver tous tes numéros de cartes !")
+    
+    await ctx.send(embed=embed)
+
 if __name__ == "__main__":
     # Lancement du serveur web Flask dans un thread séparé pour Render
     threading.Thread(target=run_web).start()
