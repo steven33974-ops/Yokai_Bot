@@ -1050,9 +1050,11 @@ async def equipe_cmd(ctx, action: str = "voir", member: discord.Member = None):
         await ctx.send(embed=embed)
 
 
-# --- CLANS & VILLAGE (VERSION EMBED STYLÉ) ---
-@discord_bot.command()
+# --- CLANS & VILLAGE (SANS TIRET DU BAS) ---
+
+@discord_bot.group(name="clan", invoke_without_command=True)
 async def clan(ctx, action: str = "infos", *, nom: str = None):
+    # Si on tape juste "!clan" ou "!clan infos"
     u_id = str(ctx.author.id)
     action = action.lower()
     
@@ -1107,12 +1109,13 @@ async def clan(ctx, action: str = "infos", *, nom: str = None):
         embed.add_field(name="👑 Leader", value=f"<@{leader}>", inline=True)
         embed.add_field(name="👥 Membres", value=f"{nb_m} dresseur(s)", inline=True)
         embed.add_field(name="🏡 Village du Clan", value=f"Niveau {niv} *(Points : {pts})*", inline=False)
-        embed.set_footer(text="Utilise !clan_investir <montant> pour faire progresser le village !")
+        embed.set_footer(text="Utilise !clan investir <montant> pour faire progresser le village !")
         
         await ctx.send(embed=embed)
 
-@discord_bot.command(name="clan investir")
+@clan.command(name="investir")
 async def clan_investir(ctx, montant: int):
+    # Commande accessible via : !clan investir <montant>
     u_id = str(ctx.author.id)
     u = get_or_create_user(u_id)
     if u["money"] < montant:
@@ -1129,8 +1132,9 @@ async def clan_investir(ctx, montant: int):
     conn.commit()
     await ctx.send(f"🌸 Investissement de {montant}$ réussi dans le clan {c_name} !")
 
-@discord_bot.command(name="clan village")
+@clan.command(name="village")
 async def clan_village(ctx):
+    # Commande accessible via : !clan village
     u_id = str(ctx.author.id)
     cursor.execute("SELECT nom_clan FROM clan_membres WHERE user_id = ?", (u_id,))
     res = cursor.fetchone()
@@ -1147,7 +1151,7 @@ async def clan_village(ctx):
         description=f"Voici l'état actuel et la progression de la citadelle collective.\n\n📈 **Niveau du Village :** {niv}\n✨ **Points accumulés :** {pts} pts",
         color=0xFFB7C5
     )
-    embed.set_footer(text="Investis avec !clan_investir pour faire grandir ce domaine !")
+    embed.set_footer(text="Investis avec !clan investir pour faire grandir ce domaine !")
     await ctx.send(embed=embed)
 
 # Lancement simultané du serveur Flask et du Bot Discord
