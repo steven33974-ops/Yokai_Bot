@@ -1111,7 +1111,7 @@ async def clan(ctx, action: str = "infos", *, nom: str = None):
         
         await ctx.send(embed=embed)
 
-@discord_bot.command(name="clan_investir")
+@discord_bot.command(name="clan investir")
 async def clan_investir(ctx, montant: int):
     u_id = str(ctx.author.id)
     u = get_or_create_user(u_id)
@@ -1129,6 +1129,26 @@ async def clan_investir(ctx, montant: int):
     conn.commit()
     await ctx.send(f"🌸 Investissement de {montant}$ réussi dans le clan {c_name} !")
 
+@discord_bot.command(name="clan village")
+async def clan_village(ctx):
+    u_id = str(ctx.author.id)
+    cursor.execute("SELECT nom_clan FROM clan_membres WHERE user_id = ?", (u_id,))
+    res = cursor.fetchone()
+    if not res:
+        await ctx.send("🌸 Tu dois être dans un clan pour voir la citadelle !")
+        return
+        
+    c_name = res[0]
+    cursor.execute("SELECT niveau_village, points_village FROM clans WHERE nom_clan = ?", (c_name,))
+    niv, pts = cursor.fetchone()
+    
+    embed = discord.Embed(
+        title=f"🏰 Citadelle du Clan : {c_name} 🏰",
+        description=f"Voici l'état actuel et la progression de la citadelle collective.\n\n📈 **Niveau du Village :** {niv}\n✨ **Points accumulés :** {pts} pts",
+        color=0xFFB7C5
+    )
+    embed.set_footer(text="Investis avec !clan_investir pour faire grandir ce domaine !")
+    await ctx.send(embed=embed)
 
 # Lancement simultané du serveur Flask et du Bot Discord
 if __name__ == "__main__":
