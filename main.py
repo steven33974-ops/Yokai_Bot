@@ -382,13 +382,27 @@ async def profil(ctx, member: discord.Member = None):
     res = cursor.fetchone()
     nb_pokes, total_lvl = res[0] or 0, res[1] or 0
 
+    niv = u_data['niv_habitation']
+    if niv <= 1000:
+        image_maison = "METTONS_UN_LIEN_ICI"
+    elif niv <= 5000:
+        image_maison = "METTONS_UN_LIEN_ICI"
+    elif niv < 10000:
+        image_maison = "METTONS_UN_LIEN_ICI"
+    else:
+        image_maison = "METTONS_UN_LIEN_ICI"
+
     embed = discord.Embed(title=f"⛩️ Profil de {target.display_name} ⛩️", color=0xFFB7C5)
     embed.add_field(name="💰 Argent", value=f"{u_data['money']}$", inline=True)
     embed.add_field(name="📖 Esprits", value=f"{nb_pokes} (Niveau cumulé: {total_lvl})", inline=True)
-    embed.add_field(name="🏠 Habitation", value=f"Niv.{u_data['niv_habitation']} - {u_data['titre_habitation']}", inline=False)
+    embed.add_field(name="🏠 Habitation", value=f"Niv.{niv}/10000 - {u_data['titre_habitation']}", inline=False)
     embed.add_field(name="🏆 Badges", value=u_data['badges'], inline=False)
     embed.add_field(name="📜 Histoire", value=u_data['bio'], inline=False)
     embed.add_field(name="🎒 Inventaire", value=f"🔴 x{u_data['pokeball']} | 🔵 x{u_data['superball']} | 🟣 x{u_data['hyperball']} | 🟡 x{u_data['masterball']}\n🍬 Bonbons: {u_data['bonbon']} | 🧪 Potions: {u_data['potion']}", inline=False)
+    
+    if image_maison.startswith("http"):
+        embed.set_thumbnail(url=image_maison)
+
     await ctx.send(embed=embed)
 
 @discord_bot.command()
@@ -485,6 +499,51 @@ async def buy(ctx, article: str, quantite: int = 1):
     cursor.execute(f"UPDATE users SET money = money - ?, {item} = {item} + ? WHERE user_id = ?", (total, quantite, str(ctx.author.id)))
     conn.commit()
     await ctx.send(f"Achat réussi de {quantite}x {item} !")
+
+# --- COMMANDE AMELIORER HABITATION ---
+@discord_bot.command(name="ameliorer_maison")
+async def ameliorer_maison(ctx):
+    u_id = str(ctx.author.id)
+    u_data = get_or_create_user(u_id)
+    niv_actuel = u_data["niv_habitation"]
+
+    if niv_actuel >= 10000:
+        await ctx.send("🌸 Ton habitation est déjà au niveau maximum (10 000) ! C'est le Palais Céleste ultime.")
+        return
+
+    cout = niv_actuel * 5000 
+
+    if u_data["money"] < cout:
+        await ctx.send(f"🌸 Fonds insuffisants ! Il te faut **{cout}$** pour améliorer ton habitation au niveau {niv_actuel + 1}.")
+        return
+
+    nouveau_niv = niv_actuel + 1
+    
+    if nouveau_niv <= 1000:
+        titre = "Sanctuaire de Brume"
+        image_maison = "METTONS_UN_LIEN_ICI"
+    elif nouveau_niv <= 5000:
+        titre = "Demeure des Esprits Majeurs"
+        image_maison = "METTONS_UN_LIEN_ICI"
+    elif nouveau_niv < 10000:
+        titre = "Palais Impérial des Cerisiers Éternels"
+        image_maison = "METTONS_UN_LIEN_ICI"
+    else:
+        titre = "Palais Céleste Absolu des Yōkai"
+        image_maison = "METTONS_UN_LIEN_ICI"
+
+    cursor.execute("UPDATE users SET money = money - ?, niv_habitation = ?, titre_habitation = ? WHERE user_id = ?", (cout, nouveau_niv, titre, u_id))
+    conn.commit()
+
+    embed = discord.Embed(
+        title="🌸 Évolution de l'Habitation 🌸",
+        description=f"Félicitations {ctx.author.mention} ! Ton habitation est passée au **niveau {nouveau_niv}** !\n\n🏮 **Nouveau titre :** {titre}",
+        color=0xFFB7C5
+    )
+    if image_maison.startswith("http"):
+        embed.set_image(url=image_maison)
+
+    await ctx.send(embed=embed)
 
 @discord_bot.command()
 async def use(ctx, objet: str, pokemon_id: int):
@@ -692,118 +751,12 @@ async def clan_investir(ctx, montant: int):
     c_name = res[0]
     cursor.execute("UPDATE users SET money = money - ? WHERE user_id = ?", (montant, u_id))
     cursor.execute("UPDATE clans SET points_village = points_village + ? WHERE nom_clan = ?", (montant, c_name))
-    
-    cursor.execute("UPDATE quetes SET progression = MIN(objectif, progression + 1), terminee = CASE WHEN progression + 1 >= objectif THEN 1 ELSE 0 END WHERE user_id = ? AND type_quete = 'investir' AND terminee = 0", (u_id,))
     conn.commit()
-    await ctx.send(f"⛩️ Investissement de {montant}$ réussi pour le clan **{c_name}** !")
+    await ctx.send(f"🌸 Investissement de {montant}$ réussi dans le clan {c_name} !")
 
-@discord_bot.command(name="clan_village")
-async def clan_village(ctx):
-    u_id = str(ctx.author.id)
-    cursor.execute("SELECT nom_clan FROM clan_membres WHERE user_id = ?", (u_id,))
-    res = cursor.fetchone()
-    if not res:
-        await ctx.send("Tu n'as pas de clan.")
-        return
-    cursor.execute("SELECT niveau_village, points_village FROM clans WHERE nom_clan = ?", (res[0],))
-    niv, pts = cursor.fetchone()
-    await ctx.send(f"🏯 Village du clan **{res[0]}**\n• Niveau : {niv}\n• Points de prospérité : {pts}")
-
-
-# --- HABITATION (AVEC DESIGN EXACT DE L'IMAGE) ---
-@discord_bot.command(name="habitation")
-async def habitation_cmd(ctx, action: str = "voir"):
-    user_id = str(ctx.author.id)
-    u_data = get_or_create_user(user_id)
-    action = action.lower()
-
-    if action == "voir":
-        niv = u_data['niv_habitation']
-        evo = u_data['evo_habitation']
-        titre = u_data['titre_habitation']
-        
-        max_evo = 100
-        remplis = int((evo / max_evo) * 10)
-        barre = "▓" * remplis + "░" * (10 - remplis)
-        progression_str = f"[{barre}]"
-
-        embed = discord.Embed(color=0xFFB7C5)
-        embed.set_author(name=f"🏡 Habitation de {ctx.author.display_name}")
-        embed.description = f"Style actuel : **{titre}**"
-        embed.add_field(name="Niveau", value=str(niv), inline=True)
-        embed.add_field(name="Évolution", value=f"{evo} / {max_evo} pts", inline=True)
-        embed.add_field(name="Progression", value=f"`{progression_str}`", inline=False)
-        
-        await ctx.send(embed=embed)
-
-    elif action == "ameliorer":
-        niveau_actuel = u_data["niv_habitation"]
-        paliers = {
-            1: {"cout": 500, "titre": "Maison de campagne traditionnelle"},
-            2: {"cout": 1500, "titre": "Domaine seigneurial des cerisiers"},
-            3: {"cout": 4000, "titre": "Palais impérial des esprits"},
-            4: {"cout": 10000, "titre": "Sanctuaire céleste légendaire"}
-        }
-        if niveau_actuel >= 4:
-            await ctx.send("🌸 Habitation déjà au niveau maximum !")
-            return
-        cout = paliers[niveau_actuel]["cout"]
-        nouveau_titre = paliers[niveau_actuel]["titre"]
-        if u_data["money"] < cout:
-            await ctx.send(f"🌸 Il te faut **{cout}$** pour améliorer ton habitation.")
-            return
-
-        cursor.execute("UPDATE users SET money = money - ?, niv_habitation = ?, titre_habitation = ? WHERE user_id = ?", (cout, niveau_actuel + 1, nouveau_titre, user_id))
-        conn.commit()
-        await ctx.send(f"⛩️ Ton habitation passe au **Niveau {niveau_actuel + 1}** ({nouveau_titre}) !")
-
-
-# --- QUÊTES ---
-@discord_bot.command(name="quetes")
-async def quetes_cmd(ctx):
-    user_id = str(ctx.author.id)
-    get_or_create_user(user_id)
-    cursor.execute("SELECT type_quete, objectif, progression, terminee FROM quetes WHERE user_id = ?", (user_id,))
-    quetes = cursor.fetchall()
-    if not quetes:
-        cursor.execute("INSERT OR REPLACE INTO quetes (user_id, type_quete, objectif, progression, terminee) VALUES (?, 'capture', 3, 0, 0)", (user_id,))
-        cursor.execute("INSERT OR REPLACE INTO quetes (user_id, type_quete, objectif, progression, terminee) VALUES (?, 'duel', 1, 0, 0)", (user_id,))
-        cursor.execute("INSERT OR REPLACE INTO quetes (user_id, type_quete, objectif, progression, terminee) VALUES (?, 'investir', 1, 0, 0)", (user_id,))
-        conn.commit()
-        cursor.execute("SELECT type_quete, objectif, progression, terminee FROM quetes WHERE user_id = ?", (user_id,))
-        quetes = cursor.fetchall()
-
-    embed = discord.Embed(title=f"📜 Quêtes de {ctx.author.display_name}", color=0xFFB7C5)
-    for q_type, obj, prog, term in quetes:
-        statut = "✅ Terminée" if term else f"En cours ({prog}/{obj})"
-        embed.add_field(name=f"Mission : {q_type}", value=f"Statut : **{statut}**", inline=False)
-    await ctx.send(embed=embed)
-
-@discord_bot.command(name="recompense")
-async def recompense_cmd(ctx):
-    user_id = str(ctx.author.id)
-    cursor.execute("SELECT type_quete FROM quetes WHERE user_id = ? AND terminee = 1", (user_id,))
-    if not cursor.fetchall():
-        await ctx.send("🌸 Aucune quête terminée en attente de récompense.")
-        return
-    cursor.execute("UPDATE users SET money = money + 300, bonbon = bonbon + 2 WHERE user_id = ?", (user_id,))
-    cursor.execute("DELETE FROM quetes WHERE user_id = ? AND terminee = 1", (user_id,))
-    conn.commit()
-    await ctx.send(f"🎉 Récompenses récupérées : **300$ et 2 Bonbons** !")
-
-
-# --- LANCEMENT COMBINÉ ---
-def run_flask():
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
-
-if __name__ == "__main__":
-    flask_thread = threading.Thread(target=run_flask)
-    flask_thread.daemon = True
-    flask_thread.start()
-
-    TOKEN = os.environ.get("DISCORD_TOKEN")
-    if TOKEN:
-        discord_bot.run(TOKEN)
-    else:
-        print("Erreur : Le token Discord (DISCORD_TOKEN) n'est pas configuré.")
+# Lancement du Bot
+TOKEN = os.getenv("DISCORD_TOKEN")
+if TOKEN:
+    discord_bot.run(TOKEN)
+else:
+    pass
