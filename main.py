@@ -70,19 +70,6 @@ class CaptureView(discord.ui.View):
     async def masterball(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_message(f"🟡 {interaction.user.mention} lance la précieuse Masterball !", ephemeral=False)
 
-@bot.command(name="setchannel")
-@commands.has_permissions(administrator=True)
-async def setchannel(ctx, salon: discord.TextChannel = None):
-    salon_cible = salon or ctx.channel
-    embed = discord.Embed(title="⛩️ Configuration du Salon", description=f"Le salon {salon_cible.mention} est désormais le sanctuaire officiel des esprits.", color=0xFF69B4)
-    await ctx.send(embed=embed)
-
-@bot.command(name="settime")
-@commands.has_permissions(administrator=True)
-async def settime(ctx, minutes: float):
-    embed = discord.Embed(title="⏳ Intervalle d'Apparition", description=f"Intervalle réglé à **{minutes}** minutes.", color=0xFF69B4)
-    await ctx.send(embed=embed)
-
 @bot.command(name="pop")
 @commands.has_permissions(administrator=True)
 async def pop(ctx):
