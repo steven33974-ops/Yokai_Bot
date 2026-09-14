@@ -210,7 +210,7 @@ async def executer_capture(user_id_str, user_display_name, ball, channel_or_inte
         cursor.execute("INSERT INTO pokedex (user_id, pokemon_name, is_shiny, level, xp) VALUES (?, ?, ?, 1, 0)", (user_id_str, poke, 1 if shiny else 0))
         cursor.execute("UPDATE users SET money = money + ? WHERE user_id = ?", (200 if shiny else 50, user_id_str))
         
-      if random.randint(1, 100) <= taux_et_noms[ball][0]:
+    if random.randint(1, 100) <= taux_et_noms[ball][0]:
       poke, shiny = pokemon_sauvage["name"], pokemon_sauvage["is_shiny"]
       pokemon_sauvage = None
       cursor.execute(
@@ -230,7 +230,7 @@ async def executer_capture(user_id_str, user_display_name, ball, channel_or_inte
       )
       quete_en_cours = cursor.fetchone()
 
-      if quete_en_cours:
+    if quete_en_cours:
         obj, prog, recomp = quete_en_cours
 
         cursor.execute(
@@ -241,7 +241,7 @@ async def executer_capture(user_id_str, user_display_name, ball, channel_or_inte
             (user_id_str,),
         )
 
-        if prog + 1 >= obj:
+    if prog + 1 >= obj:
           cursor.execute(
               "UPDATE users SET money = money + ? WHERE user_id = ?",
               (recomp, user_id_str),
