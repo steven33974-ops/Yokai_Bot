@@ -333,24 +333,19 @@ async def habitation_ameliorer(ctx):
 # 🃏 7. ARCHIVES DU TCG (CARTES AVEC CADRES & CLASSES)
 # ==========================================
 
-# Base de données simulée des cartes avec leurs différentes classes/raretés et liens d'images avec cadre
-CLASSES_CARTES = {
-    "standard": {"nom": "Commune / Peu Commune", "couleur": 0xCCCCCC},
-    "rare": {"nom": "Rare Brillante", "couleur": 0xFFD700},
-    "celeste": {"nom": "Céleste / Ultra-Rare", "couleur": 0xFF69B4}
-}
-
 class AlbumView(discord.ui.View):
-    def __init__(self, cartes_utilisateur, membre):
+    def __init__(self, membre):
         super().__init__(timeout=60)
-        self.cartes = cartes_utilisateur
         self.membre = membre
-        self.page = 0
 
     @discord.ui.button(label="◀️ Précédent", style=discord.ButtonStyle.secondary)
-    precedent_btn = discord.ui.button(label="◀️ Précédent", style=discord.ButtonStyle.secondary)
-    
-    # (Tu peux utiliser une vue paginée pour feuilleter l'album de cartes des joueurs)
+    async def precedent(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_message("Page précédente...", ephemeral=True)
+
+    @discord.ui.button(label="Suivant ▶️", style=discord.ButtonStyle.secondary)
+    async def suivant(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_message("Page suivante...", ephemeral=True)
+
 
 @bot.command(name="booster_shop")
 async def booster_shop(ctx):
@@ -373,7 +368,6 @@ async def acheter_booster(ctx, type_booster: str):
         await ctx.send("❌ Type de booster invalide ! Choisis entre `standard`, `rare` ou `celeste`.", ephemeral=True)
         return
 
-    # Simulation d'un tirage aléatoire d'un Pokémon parmi les 1025 avec son cadre
     poke_id = random.choice(POKEMONS_SAUVAGES)
     
     embed = discord.Embed(
@@ -381,8 +375,7 @@ async def acheter_booster(ctx, type_booster: str):
         description=f"Le paquet s'ouvre... et tu obtiens la carte :\n🏷️ **Mewtwo** (*Rareté : {type_booster.capitalize()}*)\n\n_Classe d'artefact scellée avec son cadre authentique._",
         color=0xFFD700
     )
-    # Intègre l'image avec le cadre rétro comme sur ton modèle
-    embed.set_image(url="https://images.pokemontcg.io/base1/10_hires.png") # Exemple avec le cadre officiel rétro
+    embed.set_image(url="https://images.pokemontcg.io/base1/10_hires.png")
     embed.set_footer(text=f"Ajouté à la collection de 🌸 ⛩️ {ctx.author.display_name} ⛩️ 🌸 !")
     
     await ctx.send(embed=embed)
@@ -396,9 +389,9 @@ async def album(ctx, membre: discord.Member = None):
         color=0xFF69B4
     )
     embed.add_field(name="🖼️ Cartes Rares & Classées", value="• `1` - Mewtwo [Base - Rareté Rare]\n• `2` - Dracaufeu [Base - Rareté Céleste]", inline=False)
-    embed.set_image(url="https://images.pokemontcg.io/base1/4_hires.png") # Aperçu d'une carte dans l'album
+    embed.set_image(url="https://images.pokemontcg.io/base1/4_hires.png")
     embed.set_footer(text="Utilise les boutons interactifs pour changer de page et admirer les cadres !")
-    await ctx.send(embed=embed)
+    await ctx.send(embed=embed, view=AlbumView(cible))
 
 @bot.command(name="afficher")
 async def afficher(ctx, *ids: int):
@@ -408,7 +401,7 @@ async def afficher(ctx, *ids: int):
         description=f"{ctx.author.mention} expose fièrement ses cartes d'IDs : **{cartes}** !",
         color=0xFFD700
     )
-    embed.set_image(url="https://images.pokemontcg.io/base1/2_hires.png") # Vitrine avec cadre
+    embed.set_image(url="https://images.pokemontcg.io/base1/2_hires.png")
     await ctx.send(embed=embed)
 
 @bot.command(name="marche")
