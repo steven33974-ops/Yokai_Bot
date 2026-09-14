@@ -745,6 +745,69 @@ async def histoire(ctx, *, texte: str = None):
     conn.commit()
     await ctx.send(f"🌸 {ctx.author.mention}, ton histoire a été enregistrée !")
 
+@discord_bot.command()
+async def histoire(ctx, *, texte: str = None):
+  u_id = str(ctx.author.id)
+  get_or_create_user(u_id)
+  if not texte:
+    await ctx.send(
+        "🌸 Tu dois écrire ton histoire ! Exemple : `!histoire Un"
+        " apprenti errant dans les brumes...`"
+    )
+    return
+
+  # On limite la taille pour éviter les abus
+  if len(texte) > 500:
+    await ctx.send("🌸 Ton histoire est trop longue (maximum 500 caractères).")
+    return
+
+  cursor.execute("UPDATE users SET bio = ? WHERE user_id = ?", (texte, u_id))
+  conn.commit()
+  await ctx.send("🌸 Ton histoire a été mise à jour avec succès sur ton profil !")
+
+
+# --- COMMANDE CLASSEMENT DES CLANS ---
+
+
+@discord_bot.command(name="classement")
+async def classement_clans(ctx):
+  # Récupère les clans triés par points_village décroissants
+  cursor.execute(
+      "SELECT nom_clan, niveau_village, points_village FROM clans ORDER BY"
+      " points_village DESC LIMIT 10"
+  )
+  top_clans = cursor.fetchall()
+
+  if not top_clans:
+    await ctx.send(
+        "🌸 Aucun clan n'a encore été créé ou enregistré pour le moment !"
+    )
+    return
+
+  embed = discord.Embed(
+      title="🏆 Classement des Clans - Yokai_Bot",
+      description="Voici le top des factions du monde des esprits :",
+      color=0xFFB7C5,
+  )
+
+  medals = ["🥇", "🥈", "🥉"]
+  description_text = ""
+
+  for index, (nom_clan, niveau, points) in enumerate(top_clans):
+    rank_display = medals[index] if index < 3 else f"`#{index+1}`"
+    description_text += (
+        f"{rank_display} **{nom_clan}** (Village Niv.{niveau})"
+        f" — `{points} points`\n"
+    )
+
+  embed.description = description_text
+  embed.set_footer(
+      text="Continuez à faire progresser vos villages pour atteindre le"
+      " sommet !"
+  )
+
+  await ctx.send(embed=embed)
+
 # --- PAGINATION POKÉDEX ---
 class PokedexPaginator(discord.ui.View):
     def __init__(self, pokemons, member_name):
