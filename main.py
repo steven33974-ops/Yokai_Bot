@@ -1050,7 +1050,7 @@ async def equipe_cmd(ctx, action: str = "voir", member: discord.Member = None):
         await ctx.send(embed=embed)
 
 
-# --- CLANS & VILLAGE ---
+# --- CLANS & VILLAGE (VERSION EMBED STYLÉ) ---
 @discord_bot.command()
 async def clan(ctx, action: str = "infos", *, nom: str = None):
     u_id = str(ctx.author.id)
@@ -1059,34 +1059,57 @@ async def clan(ctx, action: str = "infos", *, nom: str = None):
     if action == "creer" and nom:
         cursor.execute("SELECT nom_clan FROM clan_membres WHERE user_id = ?", (u_id,))
         if cursor.fetchone():
-            await ctx.send("Tu fais déjà partie d'un clan !")
+            await ctx.send("🌸 Tu fais déjà partie d'un clan !")
             return
         cursor.execute("INSERT OR IGNORE INTO clans (nom_clan, leader) VALUES (?, ?)", (nom, u_id))
         cursor.execute("INSERT OR REPLACE INTO clan_membres (user_id, nom_clan) VALUES (?, ?)", (u_id, nom))
         conn.commit()
-        await ctx.send(f"⛩️ Le clan **{nom}** a été fondé avec succès !")
+        
+        embed = discord.Embed(
+            title="⛩️ Fondation d'un Clan ⛩️",
+            description=f"Le clan **{nom}** a été fondé avec succès par {ctx.author.mention} !",
+            color=0xFFB7C5
+        )
+        await ctx.send(embed=embed)
         
     elif action == "rejoindre" and nom:
         cursor.execute("SELECT nom_clan FROM clans WHERE nom_clan = ?", (nom,))
         if not cursor.fetchone():
-            await ctx.send("Ce clan n'existe pas.")
+            await ctx.send("🌸 Ce clan n'existe pas.")
             return
         cursor.execute("INSERT OR REPLACE INTO clan_membres (user_id, nom_clan) VALUES (?, ?)", (u_id, nom))
         conn.commit()
-        await ctx.send(f"⛩️ Tu as rejoint le clan **{nom}** !")
+        
+        embed = discord.Embed(
+            title="⛩️ Nouveau Membre ⛩️",
+            description=f"{ctx.author.mention} a rejoint le clan **{nom}** !",
+            color=0xFFB7C5
+        )
+        await ctx.send(embed=embed)
         
     elif action == "infos":
         cursor.execute("SELECT nom_clan FROM clan_membres WHERE user_id = ?", (u_id,))
         res = cursor.fetchone()
         if not res:
-            await ctx.send("Tu n'as pas de clan. Utilise `!clan creer <nom>` ou `!clan rejoindre <nom>`.")
+            await ctx.send("🌸 Tu n'as pas de clan. Utilise `!clan creer <nom>` ou `!clan rejoindre <nom>`.")
             return
         c_name = res[0]
         cursor.execute("SELECT leader, niveau_village, points_village FROM clans WHERE nom_clan = ?", (c_name,))
         leader, niv, pts = cursor.fetchone()
         cursor.execute("SELECT COUNT(*) FROM clan_membres WHERE nom_clan = ?", (c_name,))
         nb_m = cursor.fetchone()[0]
-        await ctx.send(f"⛩️ **Clan {c_name}**\n👑 Leader : <@{leader}>\n👥 Membres : {nb_m}\n🏡 Niveau Village : {niv} (Pts: {pts})")
+
+        embed = discord.Embed(
+            title=f"⛩️ Clan : {c_name} ⛩️",
+            description=f"Informations et prospérité du domaine du clan.",
+            color=0xFFB7C5
+        )
+        embed.add_field(name="👑 Leader", value=f"<@{leader}>", inline=True)
+        embed.add_field(name="👥 Membres", value=f"{nb_m} dresseur(s)", inline=True)
+        embed.add_field(name="🏡 Village du Clan", value=f"Niveau {niv} *(Points : {pts})*", inline=False)
+        embed.set_footer(text="Utilise !clan_investir <montant> pour faire progresser le village !")
+        
+        await ctx.send(embed=embed)
 
 @discord_bot.command(name="clan_investir")
 async def clan_investir(ctx, montant: int):
