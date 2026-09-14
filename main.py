@@ -5,10 +5,9 @@ import random
 import sqlite3
 import os
 import asyncio
-import threading
-from flask import Flask, jsonify, request
-from flask_cors import CORS
 from datetime import datetime, timedelta
+from flask import Flask
+from flask_cors import CORS
 
 # --- SERVEUR WEB (FLASK) ---
 app = Flask(__name__)
@@ -92,7 +91,7 @@ cursor.execute('''
         PRIMARY KEY (user_id, type_quete)
     )
 ''')
-# Nouvelle table pour la collection de cartes TCG
+# Table pour la collection de cartes TCG
 cursor.execute('''
     CREATE TABLE IF NOT EXISTS collection_cartes (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -102,6 +101,18 @@ cursor.execute('''
         rarte_carte TEXT,
         image_url TEXT,
         quantite INTEGER DEFAULT 1
+    )
+''')
+# Nouvelle table pour le Marché des cartes entre joueurs
+cursor.execute('''
+    CREATE TABLE IF NOT EXISTS marche_cartes (
+        vente_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT,
+        carte_id TEXT,
+        nom_carte TEXT,
+        rarte_carte TEXT,
+        image_url TEXT,
+        prix INTEGER
     )
 ''')
 
@@ -378,10 +389,11 @@ async def resetplayer(ctx, member: discord.Member):
     cursor.execute("DELETE FROM clan_membres WHERE user_id = ?", (u_id,))
     cursor.execute("DELETE FROM quetes WHERE user_id = ?", (u_id,))
     cursor.execute("DELETE FROM collection_cartes WHERE user_id = ?", (u_id,))
+    cursor.execute("DELETE FROM marche_cartes WHERE user_id = ?", (u_id,))
     conn.commit()
     await ctx.send(f"🌸 Le profil de {member.mention} a été réinitialisé.")
 
-# --- NOUVEAU SYSTÈME DE CARTES ET BOOSTERS (TCG) ---
+# --- SYSTÈME DE CARTES, BOOSTERS ET MARCHÉ (TCG) ---
 
 BOOSTER_TYPES = {
     "standard": {"nom": "Booster Standard", "prix": 500, "description": "Contient des cartes communes et peu communes."},
@@ -392,7 +404,7 @@ BOOSTER_TYPES = {
 @discord_bot.command(name="booster_shop")
 async def booster_shop(ctx):
     embed = discord.Embed(title="📦 Boutique de Boosters de Cartes", description="Achète des boosters pour collectionner de vraies cartes Pokémon TCG dans ton album !", color=0xFFB7C5)
-    for k, v in BOOSTER_TYPES.items( ):
+    for k, v in BOOSTER_TYPES.items():
         embed.add_field(name=f"{v['nom']} (`{k}`)", value=f"💰 Prix : **{v['prix']}$**\n📝 {v['description']}", inline=False)
     embed.set_footer(text="Utilise !acheter_booster <categorie> pour en acquérir un !")
     await ctx.send(embed=embed)
@@ -415,12 +427,7 @@ async def acheter_booster(ctx, categorie: str):
     cursor.execute("UPDATE users SET money = money - ? WHERE user_id = ?", (prix, u_id))
     conn.commit()
 
-    # Simulation d'ouverture de booster TCG (via l'API Pokémon TCG gratuite ou aléatoire)
-    # On pioche un ID de carte aléatoire entre 1 et 150 (génération 1 par défaut, ou extension de cartes)
     carte_num = random.randint(1, 151)
-    
-    # Appel à l'API publique TCG / ou Pokémon officielle pour le visuel de la vraie carte
-    # Pour garantir des images de vraies cartes garanties, on utilise l'API TCGDex ou Pokémon TCG API
     try:
         url_tcg = f"https://api.tcgdex.net/v2/fr/cards/base1-{carte_num}"
         resp = requests.get(url_tcg)
@@ -431,7 +438,6 @@ async def acheter_booster(ctx, categorie: str):
             image_url = f"{data.get('image', '')}/high.png" if data.get('image') else f"https://assets.tcgdex.net/fr/base/base1/{carte_num}/high.png"
             carte_id = f"base1-{carte_num}"
         else:
-            # Fallback de secours si l'API met du temps
             nom_carte = "Pikachu Promo"
             rarte_carte = "Rare"
             image_url = "https://assets.tcgdex.net/fr/base/base1/58/high.png"
@@ -442,7 +448,6 @@ async def acheter_booster(ctx, categorie: str):
         image_url = "https://assets.tcgdex.net/fr/base/base1/4/high.png"
         carte_id = "base1-4"
 
-    # Enregistrement ou mise à jour de la quantité dans la collection du joueur
     cursor.execute("SELECT id, quantite FROM collection_cartes WHERE user_id = ? AND carte_id = ?", (u_id, carte_id))
     existing = cursor.fetchone()
     if existing:
@@ -478,16 +483,16 @@ class AlbumPaginator(discord.ui.View):
 
     def create_embed(self):
         carte_actuelle = self.cartes[self.current_page]
-        c_id, nom, rarete, img, qty = carte_actuelle
+        db_id, c_id, nom, rarete, img, qty = carte_actuelle
 
         embed = discord.Embed(
             title=f"⛩️ Album de Cartes de {self.member_name} (Page {self.current_page + 1}/{self.max_pages + 1})",
-            description=f"🏷️ **Nom :** {nom}\n✨ **Rareté :** {rarete}\n📦 **Exemplaires possédés :** x{qty}",
+            description=f"🏷️ **Nom :** {nom}\n✨ **Rareté :** {rarete}\n📦 **Exemplaires :** x{qty}\n🔑 **ID Album (pour vendre) :** `{db_id}`",
             color=0xFFB7C5
         )
         if img:
             embed.set_image(url=img)
-        embed.set_footer(text=f"ID de la carte : {c_id}")
+        embed.set_footer(text=f"Réf Carte : {c_id}")
         return embed
 
     @discord.ui.button(label="◀️ Précédent", style=discord.ButtonStyle.secondary)
@@ -507,7 +512,7 @@ class AlbumPaginator(discord.ui.View):
 @discord_bot.command(name="album")
 async def album_cmd(ctx, member: discord.Member = None):
     target = member or ctx.author
-    cursor.execute("SELECT carte_id, nom_carte, rarte_carte, image_url, quantite FROM collection_cartes WHERE user_id = ?", (str(target.id),))
+    cursor.execute("SELECT id, carte_id, nom_carte, rarte_carte, image_url, quantite FROM collection_cartes WHERE user_id = ?", (str(target.id),))
     cartes = cursor.fetchall()
     
     if not cartes:
@@ -516,6 +521,131 @@ async def album_cmd(ctx, member: discord.Member = None):
         
     view = AlbumPaginator(cartes, target.display_name)
     await ctx.send(embed=view.create_embed(), view=view)
+
+
+# --- MARCHÉ DES CARTES ENTRE JOUEURS ---
+
+@discord_bot.command(name="vendre")
+async def vendre_carte(ctx, album_id: int, prix: int):
+    if prix <= 0:
+        await ctx.send("🌸 Le prix de vente doit être supérieur à 0 $ !")
+        return
+
+    u_id = str(ctx.author.id)
+    # Vérifier si la carte appartient bien au joueur et combien il en a
+    cursor.execute("SELECT carte_id, nom_carte, rarte_carte, image_url, quantite FROM collection_cartes WHERE id = ? AND user_id = ?", (album_id, u_id))
+    carte = cursor.fetchone()
+
+    if not carte:
+        await ctx.send("🌸 Carte introuvable dans ton album ou ID invalide ! Regarde ton `!album` pour trouver l'ID de la carte.")
+        return
+
+    c_id, nom, rarete, img, qty = carte
+
+    # Retirer ou décrémenter de la collection du vendeur
+    if qty > 1:
+        cursor.execute("UPDATE collection_cartes SET quantite = quantite - 1 WHERE id = ?", (album_id,))
+    else:
+        cursor.execute("DELETE FROM collection_cartes WHERE id = ?", (album_id,))
+
+    # Ajouter la carte sur le marché
+    cursor.execute("INSERT INTO marche_cartes (user_id, carte_id, nom_carte, rarte_carte, image_url, prix) VALUES (?, ?, ?, ?, ?, ?)",
+                   (u_id, c_id, nom, rarete, img, prix))
+    conn.commit()
+
+    await ctx.send(f"🌸 Ta carte **{nom}** ({rarete}) a été mise en vente sur le marché pour **{prix}$** ! (Vente enregistrée)")
+
+@discord_bot.command(name="marche")
+async def voir_marche(ctx):
+    cursor.execute("SELECT vente_id, user_id, nom_carte, rarte_carte, prix FROM marche_cartes")
+    ventes = cursor.fetchall()
+
+    if not ventes:
+        await ctx.send("⛩️ Le marché des cartes est actuellement vide. Utilise `!vendre <id_album> <prix>` pour y placer une carte.")
+        return
+
+    embed = discord.Embed(title="⛩️ Marché des Cartes (Hôtel des Ventes) ⛩️", description="Achète des cartes mises en vente par d'autres joueurs avec `!acheter_carte <id_vente>`", color=0xFFB7C5)
+    
+    for v_id, vendeur_id, nom, rarete, prix in ventes:
+        embed.add_field(
+            name=f"🏷️ [{v_id}] {nom} ({rarete})",
+            value=f"💰 Prix : **{prix}$**\n👤 Vendeur : <@{vendeur_id}>",
+            inline=False
+        )
+    await ctx.send(embed=embed)
+
+@discord_bot.command(name="acheter_carte")
+async def acheter_carte(ctx, vente_id: int):
+    u_id = str(ctx.author.id)
+    
+    cursor.execute("SELECT user_id, carte_id, nom_carte, rarte_carte, image_url, prix FROM marche_cartes WHERE vente_id = ?", (vente_id,))
+    vente = cursor.fetchone()
+
+    if not vente:
+        await ctx.send("🌸 Cette offre de vente n'existe plus ou a déjà été achetée.")
+        return
+
+    vendeur_id, c_id, nom, rarete, img, prix = vente
+
+    if vendeur_id == u_id:
+        await ctx.send("🌸 Tu ne peux pas acheter ta propre carte ! Utilise `!retirer_vente <id>` si tu souhaites la récupérer.")
+        return
+
+    acheteur_data = get_or_create_user(u_id)
+    if acheteur_data["money"] < prix:
+        await ctx.send(f"🌸 Fonds insuffisants ! Il te faut **{prix}$** pour acheter cette carte.")
+        return
+
+    # Transférer l'argent (Retirer à l'acheteur, donner au vendeur)
+    cursor.execute("UPDATE users SET money = money - ? WHERE user_id = ?", (prix, u_id))
+    cursor.execute("UPDATE users SET money = money + ? WHERE user_id = ?", (prix, vendeur_id))
+
+    # Supprimer l'offre du marché
+    cursor.execute("DELETE FROM marche_cartes WHERE vente_id = ?", (vente_id,))
+
+    # Ajouter la carte dans la collection de l'acheteur
+    cursor.execute("SELECT id, quantite FROM collection_cartes WHERE user_id = ? AND carte_id = ?", (u_id, c_id))
+    existing = cursor.fetchone()
+    if existing:
+        cursor.execute("UPDATE collection_cartes SET quantite = quantite + 1 WHERE id = ?", (existing[0],))
+    else:
+        cursor.execute("INSERT INTO collection_cartes (user_id, carte_id, nom_carte, rarte_carte, image_url, quantite) VALUES (?, ?, ?, ?, ?, 1)",
+                       (u_id, c_id, nom, rarete, img))
+    conn.commit()
+
+    embed = discord.Embed(
+        title="🎉 Achat réussi sur le Marché !",
+        description=f"Tu as acheté **{nom}** ({rarete}) à <@{vendeur_id}> pour **{prix}$** !\nLa carte a été ajoutée à ton album.",
+        color=0xFFB7C5
+    )
+    if img:
+        embed.set_image(url=img)
+    await ctx.send(embed=embed)
+
+@discord_bot.command(name="retirer_vente")
+async def retirer_vente(ctx, vente_id: int):
+    u_id = str(ctx.author.id)
+    cursor.execute("SELECT carte_id, nom_carte, rarte_carte, image_url FROM marche_cartes WHERE vente_id = ? AND user_id = ?", (vente_id, u_id))
+    vente = cursor.fetchone()
+
+    if not vente:
+        await ctx.send("🌸 Offre introuvable ou cette carte ne t'appartient pas.")
+        return
+
+    c_id, nom, rarete, img = vente
+    cursor.execute("DELETE FROM marche_cartes WHERE vente_id = ?", (vente_id,))
+
+    # Rendre la carte au joueur dans son album
+    cursor.execute("SELECT id, quantite FROM collection_cartes WHERE user_id = ? AND carte_id = ?", (u_id, c_id))
+    existing = cursor.fetchone()
+    if existing:
+        cursor.execute("UPDATE collection_cartes SET quantite = quantite + 1 WHERE id = ?", (existing[0],))
+    else:
+        cursor.execute("INSERT INTO collection_cartes (user_id, carte_id, nom_carte, rarte_carte, image_url, quantite) VALUES (?, ?, ?, ?, ?, 1)",
+                       (u_id, c_id, nom, rarete, img))
+    conn.commit()
+
+    await ctx.send(f"🌸 Ton offre a été annulée. La carte **{nom}** a été replacée dans ton album !")
 
 
 # --- COMMANDES JOUEURS EXISTANTES ---
@@ -903,6 +1033,7 @@ async def clan_investir(ctx, montant: int):
     cursor.execute("UPDATE clans SET points_village = points_village + ? WHERE nom_clan = ?", (montant, c_name))
     conn.commit()
     await ctx.send(f"🌸 Investissement de {montant}$ réussi dans le clan {c_name} !")
+
 
 # --- LANCEMENT DU WEB SERVEUR ET DU BOT ---
 if __name__ == "__main__":
