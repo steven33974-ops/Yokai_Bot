@@ -89,12 +89,14 @@ cursor.execute('''
     CREATE TABLE IF NOT EXISTS quetes (
         user_id TEXT,
         type_quete TEXT,
+        difficulte TEXT DEFAULT 'Facile',
         objectif INTEGER,
         progression INTEGER DEFAULT 0,
         terminee INTEGER DEFAULT 0,
-        PRIMARY KEY (user_id, type_quete)
+        PRIMARY KEY (user_id, type_quete, difficulte)
     )
 ''')
+conn.commit()
 # Table pour la collection de cartes TCG
 cursor.execute('''
     CREATE TABLE IF NOT EXISTS collection_cartes (
