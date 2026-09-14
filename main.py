@@ -41,38 +41,45 @@ async def adminhelp(ctx):
 @commands.has_permissions(administrator=True)
 async def setchannel(ctx, salon: discord.TextChannel = None):
     salon_cible = salon or ctx.channel
-    await ctx.send(f"⛩️ Le salon {salon_cible.mention} est désormais le sanctuaire officiel des esprits.")
+    embed = discord.Embed(title="⛩️ Configuration du Salon", description=f"Le salon {salon_cible.mention} est désormais le sanctuaire officiel des esprits.", color=0xFF69B4)
+    await ctx.send(embed=embed)
 
 @bot.command(name="settime")
 @commands.has_permissions(administrator=True)
 async def settime(ctx, minutes: float):
-    await ctx.send(f"⏳ Intervalle d'apparition réglé à {minutes} minutes.")
+    embed = discord.Embed(title="⏳ Intervalle d'Apparition", description=f"Intervalle réglé à **{minutes}** minutes.", color=0xFF69B4)
+    await ctx.send(embed=embed)
 
 @bot.command(name="pop")
 @commands.has_permissions(administrator=True)
 async def pop(ctx):
-    await ctx.send("✨ Une distorsion dimensionnelle provoque l'apparition immédiate d'un esprit sauvage !")
+    embed = discord.Embed(title="✨ Distorsion Dimensionnelle", description="Une distorsion dimensionnelle provoque l'apparition immédiate d'un esprit sauvage !", color=0xFF69B4)
+    await ctx.send(embed=embed)
 
 @bot.command(name="addmoney")
 @commands.has_permissions(administrator=True)
 async def addmoney(ctx, membre: discord.Member, montant: int):
-    await ctx.send(f"💰 {montant}$ ont été offerts à {membre.mention}.")
+    embed = discord.Embed(title="💰 Offrande Divine", description=f"**{montant}$** ont été offerts à {membre.mention}.", color=0xFF69B4)
+    await ctx.send(embed=embed)
 
 @bot.command(name="removemoney")
 @commands.has_permissions(administrator=True)
 async def removemoney(ctx, membre: discord.Member, montant: int):
-    await ctx.send(f"💸 {montant}$ ont été prélevés à {membre.mention}.")
+    embed = discord.Embed(title="💸 Prélèvement du Sanctuaire", description=f"**{montant}$** ont été prélevés à {membre.mention}.", color=0xFF69B4)
+    await ctx.send(embed=embed)
 
 @bot.command(name="resetplayer")
 @commands.has_permissions(administrator=True)
 async def resetplayer(ctx, membre: discord.Member):
-    await ctx.send(f"⚠️ Le profil de {membre.mention} a été entièrement réinitialisé.")
+    embed = discord.Embed(title="⚠️ Réinitialisation", description=f"Le profil de {membre.mention} a été entièrement réinitialisé.", color=0xFF0000)
+    await ctx.send(embed=embed)
 
 @bot.command(name="givepokemon")
 @commands.has_permissions(administrator=True)
 async def givepokemon(ctx, membre: discord.Member, nom: str, shiny: bool = False):
     statut = "Shiny/Divine" if shiny else "normal"
-    await ctx.send(f"🎁 Un esprit {nom} ({statut}) a été confié à {membre.mention}.")
+    embed = discord.Embed(title="🎁 Don d'Esprit", description=f"Un esprit **{nom}** (*{statut}*) a été confié à {membre.mention}.", color=0xFF69B4)
+    await ctx.send(embed=embed)
 
 
 # ==========================================
@@ -82,29 +89,41 @@ async def givepokemon(ctx, membre: discord.Member, nom: str, shiny: bool = False
 @bot.command(name="profil")
 async def profil(ctx, membre: discord.Member = None):
     cible = membre or ctx.author
-    await ctx.send(f"📜 Affichage du profil et de la carte d'identité de {cible.mention}.")
+    embed = discord.Embed(title=f"⛩️ Profil de 🌸🌸 {cible.display_name} 🌸🌸 ⛩️", color=0xFF69B4)
+    embed.add_field(name="💰 Argent", value="900250$", inline=True)
+    embed.add_field(name="📖 Esprits", value="3 (Niveau cumulé: 3)", inline=True)
+    embed.add_field(name="🏠 Habitation", value="Niv.1/10000 - Chambre d'apprenti", inline=False)
+    embed.add_field(name="🏆 Badges", value="Novice du Sanctuaire", inline=False)
+    embed.add_field(name="📜 Histoire", value="Aucune histoire écrite pour l'instant...", inline=False)
+    embed.add_field(name="🎒 Inventaire", value="🔴 x1001 | 🔵 x0 | 🟣 x0 | 🟡 x0\n🍬 Bonbons: 0 | 🧪 Potions: 0", inline=False)
+    await ctx.send(embed=embed)
 
 @bot.command(name="inv")
 async def inv(ctx, membre: discord.Member = None):
     cible = membre or ctx.author
-    await ctx.send(f"🌸 Ouverture du clan d'esprits (Pokédex) de {cible.mention}.")
+    embed = discord.Embed(title=f"🌸 Clan d'esprits de {cible.display_name}", description="Liste des esprits et cartes possédées dans le clan.", color=0xFF69B4)
+    await ctx.send(embed=embed)
 
 @bot.group(name="equipe", invoke_without_command=True)
 async def equipe(ctx):
-    await ctx.send("Utilise `!equipe creer` ou `!equipe voir [@membre]`.")
+    embed = discord.Embed(title="🛡️ Gestion de l'Équipe", description="Utilise `!equipe creer` ou `!equipe voir [@membre]`.", color=0xFF69B4)
+    await ctx.send(embed=embed)
 
 @equipe.command(name="creer")
 async def equipe_creer(ctx):
-    await ctx.send("✨ Formulaire interactif ouvert pour sceller vos 3 Yōkai principaux.")
+    embed = discord.Embed(title="✨ Formulaire d'Équipe", description="Formulaire interactif ouvert pour sceller vos 3 Yōkai principaux.", color=0xFF69B4)
+    await ctx.send(embed=embed)
 
 @equipe.command(name="voir")
 async def equipe_voir(ctx, membre: discord.Member = None):
     cible = membre or ctx.author
-    await ctx.send(f"🛡️ Composition de l'équipe de combat de {cible.mention}.")
+    embed = discord.Embed(title=f"🛡️ Équipe de {cible.display_name}", description="Composition de l'équipe de combat actuelle.", color=0xFF69B4)
+    await ctx.send(embed=embed)
 
 @bot.command(name="top")
 async def top(ctx):
-    await ctx.send("🏆 Classement des dresseurs les plus fortunés du serveur.")
+    embed = discord.Embed(title="🏆 Classement des Dresseurs", description="Classement des dresseurs les plus fortunés du serveur.", color=0xFFD700)
+    await ctx.send(embed=embed)
 
 
 # ==========================================
@@ -113,23 +132,28 @@ async def top(ctx):
 
 @bot.command(name="daily")
 async def daily(ctx):
-    await ctx.send(f"🎁 {ctx.author.mention}, voici votre offrande journalière (150$, 3 Pokéballs et 1 Bonbon) !")
+    embed = discord.Embed(title="🎁 Offrande Journalière", description=f"{ctx.author.mention}, voici votre offrande journalière (**150$**, **3 Pokéballs** et **1 Bonbon**) !", color=0xFF69B4)
+    await ctx.send(embed=embed)
 
 @bot.command(name="shop")
 async def shop(ctx):
-    await ctx.send("🛍️ Bienvenue à la boutique mystique ! Articles disponibles : Balls, Potions, Bonbons.")
+    embed = discord.Embed(title="🛍️ Boutique Mystique", description="Articles disponibles : Balls, Potions, Bonbons.", color=0xFF69B4)
+    await ctx.send(embed=embed)
 
 @bot.command(name="buy")
 async def buy(ctx, article: str, quantite: int = 1):
-    await ctx.send(f"🛒 Achat de {quantite}x {article} effectué avec succès.")
+    embed = discord.Embed(title="🛒 Achat Validé", description=f"Achat de **{quantite}x {article}** effectué avec succès.", color=0xFF69B4)
+    await ctx.send(embed=embed)
 
 @bot.command(name="feed", aliases=["use"])
 async def feed(ctx, id_esprit: int):
-    await ctx.send(f"🍬 Votre esprit (ID : {id_esprit}) a été nourri et gagne de l'expérience !")
+    embed = discord.Embed(title="🍬 Repas Spirituel", description=f"Votre esprit (ID : **{id_esprit}**) a été nourri et gagne de l'expérience !", color=0xFF69B4)
+    await ctx.send(embed=embed)
 
 @bot.command(name="trade")
 async def trade(ctx, membre: discord.Member, id_1: int, id_2: int):
-    await ctx.send(f"🤝 Demande d'échange lancée avec {membre.mention} (Esprits ID : {id_1} <-> {id_2}).")
+    embed = discord.Embed(title="🤝 Pacte d'Échange", description=f"Demande d'échange lancée avec {membre.mention} (Esprits ID : **{id_1} <-> {id_2}**).", color=0xFF69B4)
+    await ctx.send(embed=embed)
 
 
 # ==========================================
@@ -138,15 +162,18 @@ async def trade(ctx, membre: discord.Member, id_1: int, id_2: int):
 
 @bot.command(name="duel")
 async def duel(ctx, adversaire: discord.Member, mise: int = 0):
-    await ctx.send(f"⚔️ {ctx.author.mention} défie {adversaire.mention} en duel dans l'arène (Mise : {mise}$) !")
+    embed = discord.Embed(title="⚔️ Arène des Duels", description=f"{ctx.author.mention} défie {adversaire.mention} en duel dans l'arène (Mise : **{mise}$**) !", color=0xFF69B4)
+    await ctx.send(embed=embed)
 
 @bot.command(name="ia")
 async def ia(ctx):
-    await ctx.send("🤖 L'entraînement contre le dresseur virtuel commence !")
+    embed = discord.Embed(title="🤖 Entraînement Virtuel", description="L'entraînement contre le dresseur virtuel commence !", color=0xFF69B4)
+    await ctx.send(embed=embed)
 
 @bot.command(name="champion")
 async def champion(ctx):
-    await ctx.send("🐉 Affrontement suprême engagé contre le Boss légendaire du sanctuaire.")
+    embed = discord.Embed(title="🐉 Affrontement Suprême", description="Affrontement engagé contre le Boss légendaire du sanctuaire.", color=0xFF69B4)
+    await ctx.send(embed=embed)
 
 
 # ==========================================
@@ -156,21 +183,27 @@ async def champion(ctx):
 @bot.command(name="histoire")
 async def histoire(ctx, *, texte: str = None):
     if texte:
-        await ctx.send("📖 Votre background / récit a été mis à jour.")
+        embed = discord.Embed(title="📖 Destinée", description="Votre background / récit a été mis à jour avec succès.", color=0xFF69B4)
+        await ctx.send(embed=embed)
     else:
-        await ctx.send("📖 Lecture de votre récit personnel.")
+        embed = discord.Embed(title="📖 Chroniques", description="Lecture de votre récit personnel.", color=0xFF69B4)
+        await ctx.send(embed=embed)
 
 @bot.command(name="quetes")
 async def quetes(ctx):
-    await ctx.send("📜 Journal de vos missions spirituelles en cours.")
+    embed = discord.Embed(title="⛩️ Quêtes et Défis de 🌸🌸 YokaiiiFox 🌸🌸", color=0xFF69B4)
+    embed.add_field(name="Voici l'état d'avancement de tes missions :", value="🟢 [Facile] Mission : Chasseur d'Esprits\n✅ Terminée !\n\nRelève les défis les plus durs pour de plus grandes récompenses !", inline=False)
+    await ctx.send(embed=embed)
 
 @bot.command(name="prendre_quete")
 async def prendre_quete(ctx, difficulte: str):
-    await ctx.send(f"🎯 Quête de niveau **{difficulte}** acceptée ! Préparez la chasse.")
+    embed = discord.Embed(title="📜 Nouvelle mission acceptée !", description=f"{ctx.author.mention} s'est lancé dans un défi **{difficulte}**.\n🎯 **Objectif** : Capturer 3 esprits.\n💰 **Récompense** : 1000$ !\n\nUtilise `!quetes` pour suivre ta progression.", color=0xFF69B4)
+    await ctx.send(embed=embed)
 
 @bot.command(name="recompense")
 async def recompense(ctx):
-    await ctx.send("🎁 Récompense de quête récupérée avec succès !")
+    embed = discord.Embed(title="🎁 Trésor du Sanctuaire", description="Récompense de quête récupérée avec succès !", color=0xFF69B4)
+    await ctx.send(embed=embed)
 
 
 # ==========================================
@@ -179,43 +212,58 @@ async def recompense(ctx):
 
 @bot.group(name="clan", invoke_without_command=True)
 async def clan(ctx):
-    await ctx.send("⛩️ Commandes clan : `!clan creer <nom>`, `!clan rejoindre <nom>`, `!clan infos`, `!clan investir`, `!clan village`.")
+    embed = discord.Embed(title="⛩️ Gestion des Clans", description="Commandes : `!clan creer <nom>`, `!clan rejoindre <nom>`, `!clan infos`, `!clan investir`, `!clan village`.", color=0xFF69B4)
+    await ctx.send(embed=embed)
 
 @clan.command(name="creer")
 async def clan_creer(ctx, *, nom: str):
-    await ctx.send(f"⛩️ Le clan **{nom}** a été fondé ! Vous en êtes le Chef suprême.")
+    embed = discord.Embed(title="⛩️ Fondation d'un Clan", description=f"Le clan **{nom}** a été fondé avec succès par {ctx.author.mention} !", color=0xFF69B4)
+    await ctx.send(embed=embed)
 
 @clan.command(name="rejoindre")
 async def clan_rejoindre(ctx, *, nom: str):
-    await ctx.send(f"🌸 Vous avez rejoint les rangs du clan **{nom}**.")
+    embed = discord.Embed(title="⛩️ Nouveau Membre", description=f"{ctx.author.mention} a rejoint le clan **{nom}** !", color=0xFF69B4)
+    await ctx.send(embed=embed)
 
 @clan.command(name="infos", aliases=["info"])
 async def clan_infos(ctx):
-    await ctx.send("📊 Informations et statistiques de votre clan.")
+    embed = discord.Embed(title="📊 Archives du Clan", description="Informations et statistiques globales de votre clan.", color=0xFF69B4)
+    await ctx.send(embed=embed)
 
 @clan.command(name="investir")
 async def clan_investir(ctx, montant: int):
-    await ctx.send(f"💰 Investissement de {montant}$ validé pour faire prospérer le village du clan.")
+    embed = discord.Embed(title="💰 Prospérité du Village", description=f"Investissement de **{montant}$** validé pour faire prospérer le village du clan.", color=0xFF69B4)
+    await ctx.send(embed=embed)
 
 @clan.command(name="village")
 async def clan_village(ctx):
-    await ctx.send("🏰 État actuel de la citadelle et barre de progression.")
+    embed = discord.Embed(title="🏰 Citadelle du Clan", description="État actuel de la citadelle et barre de progression.", color=0xFF69B4)
+    await ctx.send(embed=embed)
 
 @bot.command(name="classement")
 async def classement(ctx):
-    await ctx.send("🏅 Panthéon des meilleurs clans du serveur.")
+    embed = discord.Embed(title="🏆 Classement des Clans - Yokai_Bot", color=0xFFD700)
+    embed.add_field(name="🏅 Podiums", value="🥇 🌸 -> CLAN DES YŌKAI <- 🌸 (Village Niv.1) — `0 points`", inline=False)
+    embed.set_footer(text="Continuez à faire progresser vos villages pour atteindre le sommet !")
+    await ctx.send(embed=embed)
 
 @bot.group(name="habitation", invoke_without_command=True)
 async def habitation(ctx):
-    await ctx.send("🏠 Utilisez `!habitation voir` ou `!habitation ameliorer`.")
+    embed = discord.Embed(title="🏠 Sanctuaire Intérieur", description="Utilisez `!habitation voir` ou `!habitation ameliorer`.", color=0xFF69B4)
+    await ctx.send(embed=embed)
 
 @habitation.command(name="voir")
 async def habitation_voir(ctx):
-    await ctx.send("🏡 Standing de votre demeure actuelle et jauge de progression.")
+    embed = discord.Embed(title="⛩️ Foyer de 🌸🌸 YokaiiiFox 🌸🌸 ⛩️", color=0xFF69B4)
+    embed.add_field(name="🏠 Titre actuel", value="Chambre d'apprenti", inline=False)
+    embed.add_field(name="📈 Niveau du foyer", value="Niv. 1 / 10000", inline=False)
+    embed.add_field(name="📜 Histoire de la demeure", value="Aucune histoire écrite pour l'instant...\nTape `!habitation ameliorer` pour élever ton sanctuaire !", inline=False)
+    await ctx.send(embed=embed)
 
 @habitation.command(name="ameliorer")
 async def habitation_ameliorer(ctx):
-    await ctx.send("✨ Votre foyer s'élève vers un nouveau palier de prestige !")
+    embed = discord.Embed(title="✨ Élévation du Foyer", description="Votre foyer s'élève vers un nouveau palier de prestige !", color=0xFF69B4)
+    await ctx.send(embed=embed)
 
 
 # ==========================================
@@ -224,37 +272,45 @@ async def habitation_ameliorer(ctx):
 
 @bot.command(name="booster_shop")
 async def booster_shop(ctx):
-    await ctx.send("📦 Boutique de boosters : Standard (500$), Rare (1500$), Céleste (5000$).")
+    embed = discord.Embed(title="📦 Boutique de Boosters", description="Standards (500$), Rares (1500$), Célestes (5000$).", color=0xFF69B4)
+    await ctx.send(embed=embed)
 
 @bot.command(name="acheter_booster")
 async def acheter_booster(ctx, type_booster: str):
-    await ctx.send(f"✨ Achat d'un booster **{type_booster}** ouvert avec succès !")
+    embed = discord.Embed(title="✨ Ouverture de Booster", description=f"Achat d'un booster **{type_booster}** ouvert avec succès !", color=0xFF69B4)
+    await ctx.send(embed=embed)
 
 @bot.command(name="album")
 async def album(ctx, membre: discord.Member = None):
     cible = membre or ctx.author
-    await ctx.send(f"📖 Ouverture de l'album de cartes de {cible.mention}.")
+    embed = discord.Embed(title=f"📖 Album de Cartes", description=f"Ouverture de l'album de cartes de {cible.mention}.", color=0xFF69B4)
+    await ctx.send(embed=embed)
 
 @bot.command(name="afficher")
 async def afficher(ctx, *ids: int):
     cartes = ", ".join(map(str, ids))
-    await ctx.send(f"🖼️ Vitrine de cartes exposée (IDs : {cartes}).")
+    embed = discord.Embed(title="🖼️ Vitrine des Esprits", description=f"Cartes exposées (IDs : **{cartes}**).", color=0xFF69B4)
+    await ctx.send(embed=embed)
 
 @bot.command(name="marche")
 async def marche(ctx):
-    await ctx.send("🏪 Hôtel des ventes : voici les cartes actuellement en vente par les joueurs.")
+    embed = discord.Embed(title="🏪 Hôtel des Ventes", description="Voici les cartes actuellement en vente par les joueurs.", color=0xFF69B4)
+    await ctx.send(embed=embed)
 
 @bot.command(name="vendre")
 async def vendre(ctx, id_album: int, prix: int):
-    await ctx.send(f"🏷️ Carte (ID album : {id_album}) mise en vente sur le marché pour {prix}$.")
+    embed = discord.Embed(title="🏷️ Annonce de Vente", description=f"Carte (ID album : **{id_album}**) mise en vente sur le marché pour **{prix}$**.", color=0xFF69B4)
+    await ctx.send(embed=embed)
 
 @bot.command(name="acheter_carte")
 async def acheter_carte(ctx, id_vente: int):
-    await ctx.send(f"💸 Achat de la carte (Vente ID : {id_vente}) réussi !")
+    embed = discord.Embed(title="💸 Acquisition Réussie", description=f"Achat de la carte (Vente ID : **{id_vente}**) réussi avec succès !", color=0xFF69B4)
+    await ctx.send(embed=embed)
 
 @bot.command(name="retirer_vente")
 async def retirer_vente(ctx, id_vente: int):
-    await ctx.send(f"🔄 Vente annulée, la carte (ID : {id_vente}) a réintégré votre album.")
+    embed = discord.Embed(title="🔄 Annulation de Vente", description=f"Vente annulée, la carte (ID : **{id_vente}**) a réintégré votre album.", color=0xFF69B4)
+    await ctx.send(embed=embed)
 
 
 if __name__ == "__main__":
