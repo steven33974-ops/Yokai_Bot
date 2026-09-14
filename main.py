@@ -824,9 +824,32 @@ async def buy(ctx, article: str, quantite: int = 1):
     conn.commit()
     await ctx.send(f"Achat réussi de {quantite}x {item} !")
 
-# --- COMMANDE AMELIORER HABITATION ---
-@discord_bot.command(name="ameliorer_maison")
-async def ameliorer_maison(ctx):
+# --- SYSTÈME D'HABITATION (FOYER DU DRESSEUR) ---
+
+@discord_bot.group(name="habitation", invoke_without_command=True)
+async def habitation(ctx, member: discord.Member = None):
+    # Correspond à !habitation ou !habitation voir
+    target = member or ctx.author
+    u_data = get_or_create_user(str(target.id))
+    niv = u_data['niv_habitation']
+    
+    embed = discord.Embed(
+        title=f"⛩️ Foyer de {target.display_name} ⛩️",
+        description=f"🏠 **Titre actuel :** {u_data['titre_habitation']}\n📈 **Niveau du foyer :** Niv. {niv} / 10000",
+        color=0xFFB7C5
+    )
+    embed.add_field(name="📜 Histoire de la demeure", value=u_data['bio'], inline=False)
+    embed.set_footer(text="Tape !habitation ameliorer pour élever ton sanctuaire !")
+    await ctx.send(embed=embed)
+
+@habitation.command(name="voir")
+async def habitation_voir(ctx, member: discord.Member = None):
+    # Correspond à !habitation voir
+    await ctx.invoke(habitation, member=member)
+
+@habitation.command(name="ameliorer")
+async def habitation_ameliorer(ctx):
+    # Correspond à !habitation ameliorer
     u_id = str(ctx.author.id)
     u_data = get_or_create_user(u_id)
     niv_actuel = u_data["niv_habitation"]
@@ -868,6 +891,11 @@ async def ameliorer_maison(ctx):
         embed.set_image(url=image_maison)
 
     await ctx.send(embed=embed)
+
+# Ancienne commande gardée en secours si certains l'utilisent encore
+@discord_bot.command(name="ameliorer_maison")
+async def ancien_ameliorer_maison(ctx):
+    await ctx.invoke(habitation_ameliorer)
 
 @discord_bot.command()
 async def use(ctx, objet: str, pokemon_id: int):
