@@ -731,22 +731,6 @@ async def profil(ctx, member: discord.Member = None):
 
 @discord_bot.command()
 async def histoire(ctx, *, texte: str = None):
-    u_id = str(ctx.author.id)
-    get_or_create_user(u_id)
-    if not texte:
-        u_data = get_or_create_user(u_id)
-        embed = discord.Embed(title=f"📜 Histoire de {ctx.author.display_name}", description=u_data['bio'], color=0xFFB7C5)
-        await ctx.send(embed=embed)
-        return
-    if len(texte) > 500:
-        await ctx.send("🌸 Maximum 500 caractères.")
-        return
-    cursor.execute("UPDATE users SET bio = ? WHERE user_id = ?", (texte, u_id))
-    conn.commit()
-    await ctx.send(f"🌸 {ctx.author.mention}, ton histoire a été enregistrée !")
-
-@discord_bot.command()
-async def histoire(ctx, *, texte: str = None):
   u_id = str(ctx.author.id)
   get_or_create_user(u_id)
   if not texte:
