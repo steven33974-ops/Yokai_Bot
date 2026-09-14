@@ -58,7 +58,7 @@ async def resetplayer(ctx, membre: discord.Member):
 @bot.command(name="givepokemon")
 @commands.has_permissions(administrator=True)
 async def givepokemon(ctx, membre: discord.Member, nom: str, shiny: bool = False):
-    statut = "Shiny/Divine" normal (shiny) else "normal"
+    statut = "Shiny/Divine" if shiny else "normal"
     await ctx.send(f"🎁 Un esprit {nom} ({statut}) a été confié à {membre.mention}.")
 
 
