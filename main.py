@@ -97,8 +97,6 @@ cursor.execute('''
         PRIMARY KEY (user_id, type_quete, difficulte)
     )
 ''')
-conn.commit()
-# Table pour la collection de cartes TCG
 cursor.execute('''
     CREATE TABLE IF NOT EXISTS collection_cartes (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -110,7 +108,6 @@ cursor.execute('''
         quantite INTEGER DEFAULT 1
     )
 ''')
-# Table pour le Marché des cartes entre joueurs
 cursor.execute('''
     CREATE TABLE IF NOT EXISTS marche_cartes (
         vente_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -413,8 +410,161 @@ async def resetplayer(ctx, member: discord.Member):
     conn.commit()
     await ctx.send(f"🌸 Le profil de {member.mention} a été réinitialisé.")
 
-# --- SYSTÈME DE CARTES, BOOSTERS ET MARCHÉ (TCG) ---
 
+# --- SYSTÈME DE QUÊTES ---
+@discord_bot.command(name="quetes")
+async def voir_quetes(ctx):
+    u_id = str(ctx.author.id)
+    get_or_create_user(u_id)
+    
+    cursor.execute("SELECT type_quete, difficulte, objectif, progression, terminee, recompense FROM quetes WHERE user_id = ?", (u_id,))
+    quetes = cursor.fetchall()
+    
+    if not quetes:
+        # Assigner une quête de capture par défaut si aucune n'existe
+        cursor.execute("INSERT OR IGNORE INTO quetes (user_id, type_quete, difficulte, objectif, progression, terminee, recompense) VALUES (?, 'capture', 'Facile', 5, 0, 0, 1000)", (u_id,))
+        conn.commit()
+        cursor.execute("SELECT type_quete, difficulte, objectif, progression, terminee, recompense FROM quetes WHERE user_id = ?", (u_id,))
+        quetes = cursor.fetchall()
+
+    embed = discord.Embed(title="📜 Journal des Quêtes Spirituelles", description="Accomplis ces missions pour gagner de l'argent et progresser !", color=0xFFB7C5)
+    for q_type, diff, obj, prog, term, recomp in quetes:
+        statut = "✅ Terminée" if term == 1 else f"⏳ En cours ({prog}/{obj})"
+        embed.add_field(name=f"Quête de {q_type.capitalize()} ({diff})", value=f"Statut : {statut}\n🎁 Récompense : **{recomp}$**", inline=False)
+    
+    await ctx.send(embed=embed)
+
+
+# --- SYSTÈME D'HABITATION & PROFIL / BIO ---
+@discord_bot.command(name="profil")
+async def profil_cmd(ctx, member: discord.Member = None):
+    target = member or ctx.author
+    u_id = str(target.id)
+    u = get_or_create_user(u_id)
+    
+    embed = discord.Embed(title=f"⛩️ Profil de {target.display_name} ⛩️", description=u["bio"], color=0xFFB7C5)
+    embed.add_field(name="💰 Fortune", value=f"{u['money']}$", inline=True)
+    embed.add_field(name="🏠 Habitation", value=f"Niv. {u['niv_habitation']} - {u['titre_habitation']}", inline=True)
+    embed.add_field(name="🎖️ Badges & Titres", value=u["badges"], inline=False)
+    embed.set_thumbnail(url=target.avatar.url if target.avatar else target.default_avatar.url)
+    await ctx.send(embed=embed)
+
+@discord_bot.command(name="setbio")
+async def setbio(ctx, *, texte: str):
+    u_id = str(ctx.author.id)
+    get_or_create_user(u_id)
+    cursor.execute("UPDATE users SET bio = ? WHERE user_id = ?", (texte, u_id))
+    conn.commit()
+    await ctx.send("🌸 Ta biographie / histoire de sanctuaire a été mise à jour !")
+
+@discord_bot.command(name="habitation")
+async def habitation(ctx):
+    u_id = str(ctx.author.id)
+    u = get_or_create_user(u_id)
+    
+    titres_par_niveau = {
+        1: "Chambre d'apprenti",
+        2: "Pavillon traditionnel",
+        3: "Sanctuaire des cerisiers",
+        4: "Palais céleste des Yōkai"
+    }
+    
+    prochain_niveau = u["niv_habitation"] + 1
+    cout_amelioration = u["niv_habitation"] * 2500
+    
+    embed = discord.Embed(title=f"🏮 Habitation de {ctx.author.display_name}", description=f"Type actuel : **{u['titre_habitation']}** (Niveau {u['niv_habitation']})", color=0xFFB7C5)
+    embed.add_field(name="Amélioration", value=f"Utilise `!ameliorer_habitat` pour passer au niveau supérieur pour **{cout_amelioration}$** !", inline=False)
+    await ctx.send(embed=embed)
+
+@discord_bot.command(name="ameliorer_habitat")
+async def ameliorer_habitat(ctx):
+    u_id = str(ctx.author.id)
+    u = get_or_create_user(u_id)
+    
+    cout = u["niv_habitation"] * 2500
+    if u["money"] < cout:
+        await ctx.send(f"🌸 Il te faut **{cout}$** pour améliorer ton habitation.")
+        return
+        
+    nouveau_niv = u["niv_habitation"] + 1
+    titres = {2: "Pavillon traditionnel", 3: "Sanctuaire des cerisiers", 4: "Palais céleste des Yōkai"}
+    nouveau_titre = titres.get(nouveau_niv, "Demeure Légendaire")
+    
+    cursor.execute("UPDATE users SET money = money - ?, niv_habitation = ?, titre_habitation = ? WHERE user_id = ?", (cout, nouveau_niv, nouveau_titre, u_id))
+    conn.commit()
+    await ctx.send(f"🎉 Félicitations ! Ton habitation a évolué au niveau {nouveau_niv} : **{nouveau_titre}** !")
+
+
+# --- SYSTÈME DE CLANS ---
+@discord_bot.command(name="creer_clan")
+async def creer_clan(ctx, *, nom_clan: str):
+    u_id = str(ctx.author.id)
+    get_or_create_user(u_id)
+    
+    cursor.execute("SELECT nom_clan FROM clan_membres WHERE user_id = ?", (u_id,))
+    if cursor.fetchone():
+        await ctx.send("🌸 Tu fais déjà partie d'un clan !")
+        return
+        
+    cursor.execute("SELECT nom_clan FROM clans WHERE nom_clan = ?", (nom_clan,))
+    if cursor.fetchone():
+        await ctx.send("🌸 Ce nom de clan existe déjà !")
+        return
+        
+    cursor.execute("INSERT INTO clans (nom_clan, leader, niveau_village, points_village) VALUES (?, ?, 1, 0)", (nom_clan, u_id))
+    cursor.execute("INSERT INTO clan_membres (user_id, nom_clan) VALUES (?, ?)", (u_id, nom_clan))
+    conn.commit()
+    await ctx.send(f"⛩️ Le clan **{nom_clan}** a été fondé avec succès par {ctx.author.mention} !")
+
+@discord_bot.command(name="rejoindre_clan")
+async def rejoindre_clan(ctx, *, nom_clan: str):
+    u_id = str(ctx.author.id)
+    get_or_create_user(u_id)
+    
+    cursor.execute("SELECT nom_clan FROM clan_membres WHERE user_id = ?", (u_id,))
+    if cursor.fetchone():
+        await ctx.send("🌸 Tu appartiens déjà à un clan. Quitte-le d'abord si tu veux en changer.")
+        return
+        
+    cursor.execute("SELECT nom_clan FROM clans WHERE nom_clan = ?", (nom_clan,))
+    if not cursor.fetchone():
+        await ctx.send("🌸 Ce clan n'existe pas.")
+        return
+        
+    cursor.execute("INSERT INTO clan_membres (user_id, nom_clan) VALUES (?, ?)", (u_id, nom_clan))
+    conn.commit()
+    await ctx.send(f"🌸 {ctx.author.mention} a rejoint le clan **{nom_clan}** !")
+
+@discord_bot.command(name="clan")
+async def info_clan(ctx, *, nom_clan: str = None):
+    u_id = str(ctx.author.id)
+    
+    if not nom_clan:
+        cursor.execute("SELECT nom_clan FROM clan_membres WHERE user_id = ?", (u_id,))
+        res = cursor.fetchone()
+        if not res:
+            await ctx.send("🌸 Tu n'es dans aucun clan. Utilise `!clan <nom>` ou `!rejoindre_clan <nom>`.")
+            return
+        nom_clan = res[0]
+        
+    cursor.execute("SELECT leader, niveau_village, points_village FROM clans WHERE nom_clan = ?", (nom_clan,))
+    clan_data = cursor.fetchone()
+    if not clan_data:
+        await ctx.send("🌸 Clan introuvable.")
+        return
+        
+    leader, niv, pts = clan_data
+    cursor.execute("SELECT user_id FROM clan_membres WHERE nom_clan = ?", (nom_clan,))
+    membres = cursor.fetchall()
+    
+    embed = discord.Embed(title=f"⛩️ Clan : {nom_clan}", color=0xFFB7C5)
+    embed.add_field(name="👑 Chef", value=f"<@{leader}>", inline=True)
+    embed.add_field(name="🏮 Niveau du Village", value=f"Niv. {niv} ({pts} pts)", inline=True)
+    embed.add_field(name="👥 Membres", value=f"{len(membres)} membres", inline=False)
+    await ctx.send(embed=embed)
+
+
+# --- SYSTÈME DE CARTES, BOOSTERS ET MARCHÉ (TCG) ---
 BOOSTER_TYPES = {
     "standard": {"nom": "Booster Standard", "prix": 500, "description": "Contient des cartes communes et peu communes."},
     "rare": {"nom": "Booster Rare", "prix": 1500, "description": "Contient de fortes chances de cartes rares et holographiques."},
@@ -487,7 +637,6 @@ async def acheter_booster(ctx, categorie: str):
     embed.set_footer(text=f"Ajouté à la collection de {ctx.author.display_name} !")
     await ctx.send(embed=embed)
 
-# Pagination de l'Album de Cartes
 class AlbumPaginator(discord.ui.View):
     def __init__(self, cartes, member_name):
         super().__init__(timeout=180)
@@ -542,8 +691,6 @@ async def album_cmd(ctx, member: discord.Member = None):
     view = AlbumPaginator(cartes, target.display_name)
     await ctx.send(embed=view.create_embed(), view=view)
 
-
-# --- NOUVELLE COMMANDE : AFFICHER PLUSIEURS CARTES ---
 @discord_bot.command(name="afficher")
 async def afficher_cartes(ctx, *ids: int):
     if not ids:
@@ -583,13 +730,10 @@ async def afficher_cartes(ctx, *ids: int):
 
     await ctx.send(embed=embed)
 
-
-# --- MARCHÉ DES CARTES ENTRE JOUEURS ---
-
 @discord_bot.command(name="vendre")
 async def vendre_carte(ctx, album_id: str, prix: int):
     if not album_id.isdigit():
-        await ctx.send("🌸 Erreur : L'ID de l'album doit être un **nombre entier** (ex: `1`, `2`, `12`) et non la référence de la carte (`base1-56`). Regarde ton `!album` pour trouver le bon ID !")
+        await ctx.send("🌸 Erreur : L'ID de l'album doit être un **nombre entier** (ex: `1`, `2`, `12`) et non la référence de la carte.")
         return
 
     album_id_int = int(album_id)
@@ -603,7 +747,7 @@ async def vendre_carte(ctx, album_id: str, prix: int):
     carte = cursor.fetchone()
 
     if not carte:
-        await ctx.send("🌸 Carte introuvable dans ton album avec cet ID ! Regarde bien ton `!album` pour récupérer le bon ID numérique.")
+        await ctx.send("🌸 Carte introuvable dans ton album avec cet ID !")
         return
 
     c_id, nom, rarete, img, qty = carte
@@ -625,7 +769,7 @@ async def voir_marche(ctx):
     ventes = cursor.fetchall()
 
     if not ventes:
-        await ctx.send("⛩️ Le marché des cartes est actuellement vide. Utilise `!vendre <id_album> <prix>` pour y placer une carte.")
+        await ctx.send("⛩️ Le marché des cartes est actuellement vide.")
         return
 
     embed = discord.Embed(title="⛩️ Marché des Cartes (Hôtel des Ventes) ⛩️", description="Achète des cartes mises en vente par d'autres joueurs avec `!acheter_carte <id_vente>`", color=0xFFB7C5)
@@ -652,7 +796,7 @@ async def acheter_carte(ctx, vente_id: int):
     vendeur_id, c_id, nom, rarete, img, prix = vente
 
     if vendeur_id == u_id:
-        await ctx.send("🌸 Tu ne peux pas acheter ta propre carte ! Utilise `!retirer_vente <id>` si tu souhaites la récupérer.")
+        await ctx.send("🌸 Tu ne peux pas acheter ta propre carte !")
         return
 
     acheteur_data = get_or_create_user(u_id)
@@ -675,7 +819,7 @@ async def acheter_carte(ctx, vente_id: int):
 
     embed = discord.Embed(
         title="🎉 Achat réussi sur le Marché !",
-        description=f"Tu as acheté **{nom}** ({rarete}) à <@{vendeur_id}> pour **{prix}$** !\nLa carte a été ajoutée à ton album.",
+        description=f"Tu as acheté **{nom}** ({rarete}) à <@{vendeur_id}> pour **{prix}$** !",
         color=0xFFB7C5
     )
     if img:
@@ -707,9 +851,6 @@ async def retirer_vente(ctx, vente_id: int):
 
 # --- LANCEMENT DU BOT ET DU SERVEUR WEB ---
 if __name__ == '__main__':
-    # Lance le serveur Flask dans un thread séparé pour garder le bot en ligne (utile pour l'hébergement)
     flask_thread = threading.Thread(target=run_flask)
     flask_thread.start()
-    
-    # Remplace 'TON_TOKEN_DISCORD' par le token secret de ton bot
     discord_bot.run('TON_TOKEN_DISCORD')
