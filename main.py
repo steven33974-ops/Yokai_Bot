@@ -845,7 +845,7 @@ async def voir_quetes(ctx):
 # --- COMMANDE PRENDRE QUÊTE ---
 
 
-@discord_bot.command(name="prendre_quete")
+@discord_bot.command(name="prendre_quete", aliases=["prendre"])
 async def prendre_quete(ctx, difficulte: str = "facile"):
   u_id = str(ctx.author.id)
   diff = difficulte.capitalize()
